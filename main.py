@@ -23,7 +23,7 @@ except Exception as e:
 st.title("🧬 Proteomics Data Analysis Platform")
 st.markdown("""
 This platform provides comprehensive tools for proteomics data analysis, including:
-- Data validation and normalization
+- Data validation and preprocessing
 - Statistical analysis
 - Interactive visualizations
 - Publication-ready figure export
@@ -45,215 +45,259 @@ except Exception as e:
     st.sidebar.info("If you continue to experience issues, try refreshing the page.")
     uploaded_files = None
 
-# Initialize session state with error handling
+# Initialize session state
 if 'datasets' not in st.session_state:
     st.session_state.datasets = {}
 if 'processed_data' not in st.session_state:
     st.session_state.processed_data = {}
+if 'processing_params' not in st.session_state:
+    st.session_state.processing_params = {}
 
 # Data processing options
 if uploaded_files:
-    with st.sidebar.expander("Data Processing Options"):
+    with st.sidebar.expander("Data Preprocessing", expanded=True):
+        st.subheader("1. Filtering Options")
+        min_detection_rate = st.slider(
+            "Minimum Detection Rate",
+            0.0, 1.0, 0.5,
+            help="Minimum fraction of non-missing values required for each protein"
+        )
+        min_samples = st.number_input(
+            "Minimum Number of Samples",
+            min_value=1,
+            max_value=10,
+            value=2,
+            help="Minimum number of samples where protein must be detected"
+        )
+
+        st.subheader("2. Missing Value Handling")
+        missing_value_method = st.selectbox(
+            "Missing Value Method",
+            ["knn", "mean", "median", "constant"],
+            help="Method for imputing missing values"
+        )
+        min_valid_values = st.slider(
+            "Minimum Valid Values Ratio",
+            0.0, 1.0, 0.5,
+            help="Minimum ratio of valid values required to keep a protein"
+        )
+
+        st.subheader("3. Normalization")
         normalization_method = st.selectbox(
             "Normalization Method",
-            ["log2", "zscore", "none"],
-            help="Choose method for data normalization"
+            ["log2", "zscore", "median", "none"],
+            help="Method for data normalization"
         )
-        
-        missing_value_method = st.selectbox(
-            "Missing Value Handling",
-            ["mean", "median", "zero"],
-            help="Choose method for handling missing values"
+
+        st.subheader("4. Quality Control")
+        outlier_method = st.selectbox(
+            "Outlier Detection Method",
+            ["zscore", "iqr"],
+            help="Method for detecting outliers"
         )
-        
         outlier_threshold = st.slider(
-            "Outlier Detection Threshold",
+            "Outlier Threshold",
             1.0, 5.0, 3.0,
-            help="Z-score threshold for outlier detection"
+            help="Threshold for outlier detection"
         )
-    
-    # Load and process datasets
-    for file in uploaded_files:
-        try:
-            if file.name.endswith('.csv'):
-                data = pd.read_csv(file)
-            else:
-                data = pd.read_excel(file)
-            
-            # Validate data
-            validation_results = dp.validate_data(data)
-            
-            if validation_results["valid"]:
+
+    # Process button
+    if st.sidebar.button("Process Data"):
+        for file in uploaded_files:
+            try:
+                # Load data
+                if file.name.endswith('.csv'):
+                    data = pd.read_csv(file)
+                else:
+                    data = pd.read_excel(file)
+
                 # Store raw data
                 st.session_state.datasets[file.name] = data
-                
-                # Process data
-                processed_data = data.copy()
-                if normalization_method != "none":
-                    processed_data = dp.normalize_data(processed_data, method=normalization_method)
-                processed_data = dp.handle_missing_values(processed_data, method=missing_value_method)
-                
-                # Store processed data
-                st.session_state.processed_data[file.name] = processed_data
-                
-                st.sidebar.success(f"Successfully processed: {file.name}")
-            else:
-                st.sidebar.error(f"Validation failed for {file.name}:")
-                for error in validation_results["errors"]:
-                    st.sidebar.error(f"- {error}")
-                
-        except Exception as e:
-            st.sidebar.error(f"Error processing {file.name}: {str(e)}")
+
+                # Validate data
+                validation_results = dp.validate_data(data)
+
+                if validation_results["valid"]:
+                    # 1. Filter proteins
+                    filtered_data, filter_stats = dp.filter_proteins(
+                        data,
+                        min_detection_rate=min_detection_rate,
+                        min_samples=min_samples
+                    )
+
+                    # 2. Handle missing values
+                    cleaned_data = dp.handle_missing_values(
+                        filtered_data,
+                        method=missing_value_method,
+                        min_valid_values=min_valid_values
+                    )
+
+                    # 3. Normalize data
+                    if normalization_method != "none":
+                        processed_data = dp.normalize_data(
+                            cleaned_data,
+                            method=normalization_method
+                        )
+                    else:
+                        processed_data = cleaned_data
+
+                    # 4. Calculate quality metrics
+                    qc_metrics = dp.calculate_quality_metrics(processed_data)
+
+                    # Store processed data and parameters
+                    st.session_state.processed_data[file.name] = processed_data
+                    st.session_state.processing_params[file.name] = {
+                        "filter_stats": filter_stats,
+                        "qc_metrics": qc_metrics
+                    }
+
+                    st.sidebar.success(f"Successfully processed: {file.name}")
+
+                    # Show processing summary
+                    st.sidebar.write("### Processing Summary")
+                    st.sidebar.write(f"- Original proteins: {filter_stats['total_proteins']}")
+                    st.sidebar.write(f"- Filtered proteins: {filter_stats['filtered_proteins']}")
+                    st.sidebar.write(f"- Removed proteins: {filter_stats['removed_proteins']}")
+
+                else:
+                    st.sidebar.error(f"Validation failed for {file.name}:")
+                    for error in validation_results["errors"]:
+                        st.sidebar.error(f"- {error}")
+
+            except Exception as e:
+                st.sidebar.error(f"Error processing {file.name}: {str(e)}")
 
     # Main content area with tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Data Overview",
-        "Statistical Analysis",
-        "Volcano Plot",
-        "PCA Analysis",
-        "Heatmap"
-    ])
+    if st.session_state.processed_data:
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "Data Overview",
+            "Quality Control",
+            "Volcano Plot",
+            "PCA Analysis",
+            "Heatmap"
+        ])
 
-    # Data Overview Tab
-    with tab1:
-        st.header("Data Overview")
-        selected_dataset = st.selectbox(
-            "Select Dataset",
-            list(st.session_state.processed_data.keys())
-        )
-        
-        if selected_dataset:
-            data = st.session_state.processed_data[selected_dataset]
-            st.write("### Processed Data Preview")
-            st.dataframe(data.head())
-            
-            st.write("### Data Statistics")
-            st.dataframe(data.describe())
-            
-            # Outlier detection
-            outliers = dp.detect_outliers(data, threshold=outlier_threshold)
-            if outliers.any().any():
-                st.write("### Outlier Detection")
-                st.write("Cells highlighted in red indicate potential outliers")
-                styled_data = data.style.background_gradient(
-                    cmap='Reds',
-                    subset=pd.IndexSlice[outliers.index, outliers.columns[outliers.any()]]
-                )
-                st.dataframe(styled_data)
-
-    # Statistical Analysis Tab
-    with tab2:
-        st.header("Statistical Analysis")
-        if len(st.session_state.processed_data) >= 2:
-            datasets = list(st.session_state.processed_data.keys())
-            dataset1 = st.selectbox("Select first dataset", datasets)
-            dataset2 = st.selectbox("Select second dataset", datasets, index=1)
-            
-            if dataset1 != dataset2:
-                data1 = st.session_state.processed_data[dataset1]
-                data2 = st.session_state.processed_data[dataset2]
-                
-                stat_method = st.selectbox(
-                    "Statistical Test",
-                    ["ttest", "mannwhitney"]
-                )
-                
-                results = stats.perform_differential_analysis(
-                    pd.concat([data1, data2]),
-                    data1.columns,
-                    data2.columns,
-                    method=stat_method
-                )
-                
-                st.write("### Statistical Analysis Results")
-                st.dataframe(results)
-                
-                # Download results
-                csv = results.to_csv(index=False)
-                st.download_button(
-                    "Download Results CSV",
-                    csv,
-                    "statistical_analysis.csv",
-                    "text/csv"
-                )
-
-    # Volcano Plot Tab
-    with tab3:
-        st.header("Volcano Plot")
-        if len(st.session_state.processed_data) > 0:
+        # Data Overview Tab
+        with tab1:
+            st.header("Data Overview")
             selected_dataset = st.selectbox(
-                "Select Dataset for Volcano Plot",
-                list(st.session_state.processed_data.keys()),
-                key="volcano_dataset"
+                "Select Dataset",
+                list(st.session_state.processed_data.keys())
             )
-            
-            data = st.session_state.processed_data[selected_dataset]
-            
-            # Column selection
-            cols = list(data.select_dtypes(include=[np.number]).columns)
-            x_col = st.selectbox("Select Log2 Fold Change Column", cols)
-            y_col = st.selectbox("Select P-value Column", cols)
-            
-            if x_col and y_col:
-                cutoffs = {
-                    "p_value": st.slider("P-value cutoff (-log10)", 0.0, 10.0, 1.3),
-                    "fold_change": st.slider("Fold change cutoff", 0.0, 5.0, 1.0)
-                }
-                
-                fig = viz.create_interactive_volcano(
+
+            if selected_dataset:
+                data = st.session_state.processed_data[selected_dataset]
+                st.write("### Processed Data Preview")
+                st.dataframe(data.head())
+
+                st.write("### Processing Parameters")
+                st.json(st.session_state.processing_params[selected_dataset])
+
+        # Quality Control Tab
+        with tab2:
+            st.header("Quality Control")
+            if selected_dataset:
+                data = st.session_state.processed_data[selected_dataset]
+                qc_metrics = st.session_state.processing_params[selected_dataset]["qc_metrics"]
+
+                # Display QC metrics
+                st.write("### Quality Metrics")
+                st.write("#### Missing Values")
+                missing_values_df = pd.DataFrame({
+                    "Missing Values": qc_metrics["missing_values_per_sample"],
+                    "Percentage": qc_metrics["missing_values_percentage"]
+                })
+                st.dataframe(missing_values_df)
+
+                # Detect and display outliers
+                outliers = dp.detect_outliers(
                     data,
-                    x_col,
-                    y_col,
-                    "Gene Name" if "Gene Name" in data.columns else None,
-                    cutoffs
+                    method=outlier_method,
+                    threshold=outlier_threshold
                 )
-                st.plotly_chart(fig, use_container_width=True)
 
-    # PCA Analysis Tab
-    with tab4:
-        st.header("PCA Analysis")
-        if len(st.session_state.processed_data) > 0:
-            selected_dataset = st.selectbox(
-                "Select Dataset for PCA",
-                list(st.session_state.processed_data.keys()),
-                key="pca_dataset"
-            )
-            
-            data = st.session_state.processed_data[selected_dataset]
-            numeric_data = data.select_dtypes(include=[np.number])
-            
-            if not numeric_data.empty:
-                fig = viz.create_pca_plot(
-                    numeric_data,
-                    np.array([0.5, 0.3]),  # Example variance ratios
-                    {"PC1": "First Principal Component", "PC2": "Second Principal Component"},
-                    data.index
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                st.write("### Outlier Detection")
+                outlier_summary = outliers.sum().to_frame("Number of Outliers")
+                st.dataframe(outlier_summary)
 
-    # Heatmap Tab
-    with tab5:
-        st.header("Heatmap")
-        if len(st.session_state.processed_data) > 0:
-            selected_dataset = st.selectbox(
-                "Select Dataset for Heatmap",
-                list(st.session_state.processed_data.keys()),
-                key="heatmap_dataset"
-            )
-            
-            data = st.session_state.processed_data[selected_dataset]
-            numeric_data = data.select_dtypes(include=[np.number])
-            
-            if not numeric_data.empty:
-                cluster_rows = st.checkbox("Cluster Rows", value=True)
-                cluster_cols = st.checkbox("Cluster Columns", value=True)
-                
-                fig = viz.create_heatmap(
-                    numeric_data.values,
-                    numeric_data.index,
-                    numeric_data.columns
+
+        # Volcano Plot Tab
+        with tab3:
+            st.header("Volcano Plot")
+            if len(st.session_state.processed_data) > 0:
+                selected_dataset = st.selectbox(
+                    "Select Dataset for Volcano Plot",
+                    list(st.session_state.processed_data.keys()),
+                    key="volcano_dataset"
                 )
-                st.plotly_chart(fig, use_container_width=True)
+
+                data = st.session_state.processed_data[selected_dataset]
+
+                # Column selection
+                cols = list(data.select_dtypes(include=[np.number]).columns)
+                x_col = st.selectbox("Select Log2 Fold Change Column", cols)
+                y_col = st.selectbox("Select P-value Column", cols)
+
+                if x_col and y_col:
+                    cutoffs = {
+                        "p_value": st.slider("P-value cutoff (-log10)", 0.0, 10.0, 1.3),
+                        "fold_change": st.slider("Fold change cutoff", 0.0, 5.0, 1.0)
+                    }
+
+                    fig = viz.create_interactive_volcano(
+                        data,
+                        x_col,
+                        y_col,
+                        "Gene Name" if "Gene Name" in data.columns else None,
+                        cutoffs
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+        # PCA Analysis Tab
+        with tab4:
+            st.header("PCA Analysis")
+            if len(st.session_state.processed_data) > 0:
+                selected_dataset = st.selectbox(
+                    "Select Dataset for PCA",
+                    list(st.session_state.processed_data.keys()),
+                    key="pca_dataset"
+                )
+
+                data = st.session_state.processed_data[selected_dataset]
+                numeric_data = data.select_dtypes(include=[np.number])
+
+                if not numeric_data.empty:
+                    fig = viz.create_pca_plot(
+                        numeric_data,
+                        np.array([0.5, 0.3]),  # Example variance ratios
+                        {"PC1": "First Principal Component", "PC2": "Second Principal Component"},
+                        data.index
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+        # Heatmap Tab
+        with tab5:
+            st.header("Heatmap")
+            if len(st.session_state.processed_data) > 0:
+                selected_dataset = st.selectbox(
+                    "Select Dataset for Heatmap",
+                    list(st.session_state.processed_data.keys()),
+                    key="heatmap_dataset"
+                )
+
+                data = st.session_state.processed_data[selected_dataset]
+                numeric_data = data.select_dtypes(include=[np.number])
+
+                if not numeric_data.empty:
+                    cluster_rows = st.checkbox("Cluster Rows", value=True)
+                    cluster_cols = st.checkbox("Cluster Columns", value=True)
+
+                    fig = viz.create_heatmap(
+                        numeric_data.values,
+                        numeric_data.index,
+                        numeric_data.columns
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
 
 else:
     st.info("Please upload one or more datasets to begin analysis.")
@@ -261,5 +305,5 @@ else:
 # Footer
 st.markdown("""
 ---
-Created with ❤️ using Streamlit | [Documentation](https://github.com/yourusername/proteomics-analysis)
+Created with ❤️ using Streamlit
 """)
