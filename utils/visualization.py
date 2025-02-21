@@ -6,29 +6,63 @@ import numpy as np
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 def create_interactive_volcano(df, x_col, y_col, gene_col, cutoffs):
-    """Create interactive volcano plot with hover effects."""
+    """
+    Create interactive volcano plot with hover effects.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        x_col (str): Column name for log2 fold change values
+        y_col (str): Column name for p-values
+        gene_col (str): Column name for gene identifiers (optional)
+        cutoffs (dict): Dictionary with 'p_value' and 'fold_change' cutoffs
+    """
+    plot_df = df.copy()
+
+    # Ensure required columns exist
+    if x_col not in plot_df.columns:
+        raise ValueError(f"Column '{x_col}' not found in dataframe")
+    if y_col not in plot_df.columns:
+        raise ValueError(f"Column '{y_col}' not found in dataframe")
+
     # Calculate -log10(p-value) if needed
     if not y_col.startswith('-log10'):
-        df['-log10(p-value)'] = -np.log10(df[y_col])
-        y_col = '-log10(p-value)'
+        plot_df['-log10(p-value)'] = -np.log10(plot_df[y_col])
+        y_plot_col = '-log10(p-value)'
+    else:
+        y_plot_col = y_col
 
     # Create significance categories
-    df['significance'] = 'Not Significant'
-    df.loc[(df[x_col] >= cutoffs['fold_change']) & (df[y_col] >= cutoffs['p_value']), 'significance'] = 'Upregulated'
-    df.loc[(df[x_col] <= -cutoffs['fold_change']) & (df[y_col] >= cutoffs['p_value']), 'significance'] = 'Downregulated'
+    plot_df['significance'] = 'Not Significant'
+    plot_df.loc[
+        (plot_df[x_col] >= cutoffs['fold_change']) & 
+        (plot_df[y_plot_col] >= cutoffs['p_value']), 
+        'significance'
+    ] = 'Upregulated'
+    plot_df.loc[
+        (plot_df[x_col] <= -cutoffs['fold_change']) & 
+        (plot_df[y_plot_col] >= cutoffs['p_value']), 
+        'significance'
+    ] = 'Downregulated'
+
+    # Create hover data dictionary
+    hover_data = {}
+    if gene_col and gene_col in plot_df.columns:
+        hover_data[gene_col] = True
+    hover_data[x_col] = ':.2f'
+    hover_data[y_plot_col] = ':.2f'
 
     # Create the scatter plot
     fig = px.scatter(
-        df,
+        plot_df,
         x=x_col,
-        y=y_col,
+        y=y_plot_col,
         color='significance',
         color_discrete_map={
             'Upregulated': 'red',
             'Downregulated': 'blue',
             'Not Significant': 'grey'
         },
-        hover_data=[gene_col] if gene_col else None,
+        hover_data=hover_data,
         template="simple_white"
     )
 

@@ -362,25 +362,50 @@ if uploaded_files:
 
                 data = st.session_state.processed_data[selected_dataset]
 
-                # Column selection
-                cols = list(data.select_dtypes(include=[np.number]).columns)
-                x_col = st.selectbox("Select Log2 Fold Change Column", cols)
-                y_col = st.selectbox("Select P-value Column", cols)
+                # Only show quantity and statistical columns
+                quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+                stat_cols = [col for col in data.columns if col in ["PG.Pvalue", "PG.Qvalue", "PG.CV"]]
+
+                # Column selection with validation
+                x_col = st.selectbox(
+                    "Select column for Log2 Fold Change",
+                    quantity_cols,
+                    index=0 if quantity_cols else None,
+                    help="Select a quantity column to use for fold change calculation"
+                )
+
+                y_col = st.selectbox(
+                    "Select column for P-value",
+                    stat_cols,
+                    index=stat_cols.index("PG.Pvalue") if "PG.Pvalue" in stat_cols else 0,
+                    help="Select a statistical measure column (p-value or q-value)"
+                )
 
                 if x_col and y_col:
+                    # Calculate log2 fold change if needed
+                    if not x_col.startswith("log2"):
+                        data[f"log2_{x_col}"] = np.log2(data[x_col])
+                        x_col = f"log2_{x_col}"
+
                     cutoffs = {
                         "p_value": st.slider("P-value cutoff (-log10)", 0.0, 10.0, 1.3),
                         "fold_change": st.slider("Fold change cutoff", 0.0, 5.0, 1.0)
                     }
 
-                    fig = viz.create_interactive_volcano(
-                        data,
-                        x_col,
-                        y_col,
-                        "Gene Name" if "Gene Name" in data.columns else None,
-                        cutoffs
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                    try:
+                        fig = viz.create_interactive_volcano(
+                            data,
+                            x_col,
+                            y_col,
+                            "Gene Name" if "Gene Name" in data.columns else None,
+                            cutoffs
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Error creating volcano plot: {str(e)}")
+                else:
+                    st.warning("Please select both Log2 Fold Change and P-value columns")
+
 
         # PCA Analysis Tab
         with tab4:
@@ -403,6 +428,7 @@ if uploaded_files:
                         data.index
                     )
                     st.plotly_chart(fig, use_container_width=True)
+
 
         # Heatmap Tab
         with tab5:
@@ -428,8 +454,8 @@ if uploaded_files:
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-else:
-    st.info("Please upload one or more datasets to begin analysis.")
+    else:
+        st.info("Please upload one or more datasets to begin analysis.")
 
 # Footer
 st.markdown("""
