@@ -99,6 +99,7 @@ if uploaded_files:
     with st.sidebar.expander("1. Dataset Structure", expanded=True):
         st.write("Analyze dataset structure")
 
+        # Initialize dataset structure first
         if st.button("Analyze Dataset"):
             for file in uploaded_files:
                 result = load_and_preprocess_data(file)
@@ -109,51 +110,60 @@ if uploaded_files:
                         # Analyze dataset structure
                         dataset_info = dp.analyze_dataset_structure(data)
 
+                        # Store data and analysis results
+                        st.session_state.datasets[file.name] = data
+                        st.session_state.dataset_info[file.name] = dataset_info
+
                         st.write(f"### Dataset: {file.name}")
                         st.write("#### Summary")
                         st.write(f"- Number of cell lines: {dataset_info['summary']['num_cell_lines']}")
                         st.write(f"- Number of conditions: {dataset_info['summary']['num_conditions']}")
                         st.write(f"- Number of quantity columns: {dataset_info['summary']['num_quantity_columns']}")
 
-                        # Add selection options for cell lines and conditions
-                        if 'cell_lines' in dataset_info:
-                            selected_cell_lines = st.multiselect(
-                                "Select Cell Lines to Analyze",
-                                options=dataset_info['cell_lines'],
-                                default=dataset_info['cell_lines'],
-                                key=f"cell_lines_{file.name}"
-                            )
-
-                        if 'conditions' in dataset_info:
-                            selected_conditions = st.multiselect(
-                                "Select Treatment Conditions",
-                                options=dataset_info['conditions'],
-                                default=dataset_info['conditions'],
-                                key=f"conditions_{file.name}"
-                            )
-
-                        # Store selections in session state
-                        st.session_state.analysis_selections[file.name] = {
-                            'cell_lines': selected_cell_lines,
-                            'conditions': selected_conditions
-                        }
-
-                        # Store data and analysis results
-                        st.session_state.datasets[file.name] = data
-                        st.session_state.dataset_info[file.name] = dataset_info
-
                         logger.info(f"Successfully processed and stored dataset info for {file.name}")
-
-                        # Show current selection summary
-                        st.write("### Current Selection")
-                        st.write(f"Selected Cell Lines: {', '.join(selected_cell_lines)}")
-                        st.write(f"Selected Conditions: {', '.join(selected_conditions)}")
-
                     except Exception as e:
                         logger.error(f"Error analyzing dataset structure for {file.name}: {str(e)}")
                         st.error(f"Error analyzing dataset structure for {file.name}: {str(e)}")
                 else:
                     st.error(f"Error loading {file.name}: {result['error']}")
+
+        # Show selection options outside the button click
+        for file in uploaded_files:
+            if file.name in st.session_state.dataset_info:
+                dataset_info = st.session_state.dataset_info[file.name]
+                st.write(f"### Dataset: {file.name}")
+
+                # Initialize selections in session state if not present
+                if file.name not in st.session_state.analysis_selections:
+                    st.session_state.analysis_selections[file.name] = {
+                        'cell_lines': dataset_info.get('cell_lines', []),
+                        'conditions': dataset_info.get('conditions', [])
+                    }
+
+                # Add selection options for cell lines and conditions
+                if 'cell_lines' in dataset_info:
+                    selected_cell_lines = st.multiselect(
+                        "Select Cell Lines to Analyze",
+                        options=dataset_info['cell_lines'],
+                        default=st.session_state.analysis_selections[file.name]['cell_lines'],
+                        key=f"cell_lines_{file.name}"
+                    )
+                    st.session_state.analysis_selections[file.name]['cell_lines'] = selected_cell_lines
+
+                if 'conditions' in dataset_info:
+                    selected_conditions = st.multiselect(
+                        "Select Treatment Conditions",
+                        options=dataset_info['conditions'],
+                        default=st.session_state.analysis_selections[file.name]['conditions'],
+                        key=f"conditions_{file.name}"
+                    )
+                    st.session_state.analysis_selections[file.name]['conditions'] = selected_conditions
+
+                # Show current selection summary
+                if selected_cell_lines or selected_conditions:
+                    st.write("### Current Selection")
+                    st.write(f"Selected Cell Lines: {', '.join(selected_cell_lines)}")
+                    st.write(f"Selected Conditions: {', '.join(selected_conditions)}")
 
     with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")
