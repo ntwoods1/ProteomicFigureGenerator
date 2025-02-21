@@ -236,17 +236,19 @@ if uploaded_files:
                     # Store raw data
                     st.session_state.datasets[file.name] = data
 
-                    # Apply peptide-based filtering
+                    # Apply filtering with CV analysis on raw data first
                     try:
                         filtered_data, filter_stats = dp.filter_by_peptide_count(
                             data,
-                            min_peptides=min_peptides
+                            min_peptides=min_peptides,
+                            cv_cutoff=cv_cutoff if enable_cv_filter else None
                         )
 
                         # Store processed data and parameters
                         st.session_state.processed_data[file.name] = filtered_data
                         st.session_state.processing_params[file.name] = {
-                            "peptide_filter_stats": filter_stats
+                            "filter_stats": filter_stats,
+                            "cv_analysis_on_raw": True
                         }
 
                         # Show processing summary
