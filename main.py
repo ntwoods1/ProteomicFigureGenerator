@@ -9,12 +9,15 @@ from utils import data_processing as dp
 from utils import visualization as viz
 from utils import statistics as stats
 
-# Configure Streamlit page
-st.set_page_config(
-    page_title="Proteomics Data Analysis",
-    page_icon="🧬",
-    layout="wide"
-)
+# Configure Streamlit page with better error handling
+try:
+    st.set_page_config(
+        page_title="Proteomics Data Analysis",
+        page_icon="🧬",
+        layout="wide"
+    )
+except Exception as e:
+    st.error(f"Error initializing page: {str(e)}")
 
 # Title and introduction
 st.title("🧬 Proteomics Data Analysis Platform")
@@ -29,14 +32,20 @@ This platform provides comprehensive tools for proteomics data analysis, includi
 # Sidebar configuration
 st.sidebar.header("Data Upload & Configuration")
 
-# File upload
-uploaded_files = st.sidebar.file_uploader(
-    "Upload Proteomics Data (Excel/CSV)",
-    accept_multiple_files=True,
-    type=["xlsx", "csv"]
-)
+# File upload with error handling
+try:
+    uploaded_files = st.sidebar.file_uploader(
+        "Upload Proteomics Data (Excel/CSV)",
+        accept_multiple_files=True,
+        type=["xlsx", "csv"],
+        key="file_uploader"
+    )
+except Exception as e:
+    st.sidebar.error(f"Error during file upload: {str(e)}")
+    st.sidebar.info("If you continue to experience issues, try refreshing the page.")
+    uploaded_files = None
 
-# Initialize session state
+# Initialize session state with error handling
 if 'datasets' not in st.session_state:
     st.session_state.datasets = {}
 if 'processed_data' not in st.session_state:
@@ -62,7 +71,7 @@ if uploaded_files:
             1.0, 5.0, 3.0,
             help="Z-score threshold for outlier detection"
         )
-
+    
     # Load and process datasets
     for file in uploaded_files:
         try:
