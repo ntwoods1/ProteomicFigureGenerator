@@ -134,9 +134,25 @@ if uploaded_files:
         st.subheader("3. Normalization")
         normalization_method = st.selectbox(
             "Normalization Method",
-            ["log2", "zscore", "median", "none"],
+            ["none", "log2", "zscore", "median", "loess"],
             help="Method for data normalization"
         )
+
+        # Add row centering options
+        enable_row_centering = st.checkbox(
+            "Enable Row Centering",
+            value=False,
+            help="Apply row-wise centering after normalization"
+        )
+
+        if enable_row_centering:
+            center_method = st.radio(
+                "Centering Method",
+                ["zscore", "scale100"],
+                help="zscore: Center on 0 with SD=1, scale100: Center on 100"
+            )
+        else:
+            center_method = None
 
         st.subheader("4. Quality Control")
         outlier_method = st.selectbox(
@@ -185,7 +201,9 @@ if uploaded_files:
                         if normalization_method != "none":
                             processed_data = dp.normalize_data(
                                 cleaned_data,
-                                method=normalization_method
+                                method=normalization_method,
+                                center_scale=enable_row_centering,
+                                center_method=center_method if enable_row_centering else None
                             )
                         else:
                             processed_data = cleaned_data

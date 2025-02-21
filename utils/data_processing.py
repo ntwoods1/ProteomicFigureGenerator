@@ -3,6 +3,7 @@ import numpy as np
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 def filter_by_peptide_count(df, min_peptides=1):
     """
@@ -85,11 +86,23 @@ def filter_proteins(df, min_detection_rate=0.5, min_samples=2):
         "removed_proteins": len(df) - len(filtered_df)
     }
 
-def normalize_data(df, method="log2", center_scale=True):
-    """Normalize data using specified method."""
+def normalize_data(df, method="log2", center_scale=True, center_method="zscore"):
+    """
+    Normalize data using specified method.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        method (str): Normalization method ('log2', 'zscore', 'median', 'loess', 'none')
+        center_scale (bool): Whether to apply row centering
+        center_method (str): Method for row centering ('zscore' or 'scale100')
+
+    Returns:
+        pd.DataFrame: Normalized dataframe
+    """
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df_norm = df.copy()
 
+    # First apply column-wise normalization
     if method == "log2":
         # Add small constant to avoid log(0)
         min_positive = df_norm[numeric_cols].replace(0, np.nan).min().min()
@@ -99,10 +112,33 @@ def normalize_data(df, method="log2", center_scale=True):
         scaler = StandardScaler()
         df_norm[numeric_cols] = scaler.fit_transform(df_norm[numeric_cols])
     elif method == "median":
-        if center_scale:
-            df_norm[numeric_cols] = df_norm[numeric_cols].subtract(
-                df_norm[numeric_cols].median(axis=1), axis=0
-            )
+        df_norm[numeric_cols] = df_norm[numeric_cols].subtract(
+            df_norm[numeric_cols].median(axis=1), axis=0
+        )
+    elif method == "loess":
+        # Apply LOESS normalization to each column
+        for col in numeric_cols:
+            y = df_norm[col].values
+            x = np.arange(len(y))
+            # Remove NaN values for LOESS
+            mask = ~np.isnan(y)
+            if sum(mask) > 2:  # Need at least 3 points for LOESS
+                y_smoothed = lowess(y[mask], x[mask], frac=0.3, it=3, return_sorted=False)
+                # Normalize to the smoothed curve
+                df_norm.loc[mask, col] = y[mask] - y_smoothed + np.median(y[mask])
+
+    # Then apply row centering if requested
+    if center_scale:
+        if center_method == "zscore":
+            # Center on 0 with standard deviation of 1
+            row_means = df_norm[numeric_cols].mean(axis=1)
+            row_stds = df_norm[numeric_cols].std(axis=1)
+            df_norm[numeric_cols] = df_norm[numeric_cols].subtract(row_means, axis=0).div(row_stds, axis=0)
+        elif center_method == "scale100":
+            # Center on 100
+            row_means = df_norm[numeric_cols].mean(axis=1)
+            scaling_factor = 100 / row_means
+            df_norm[numeric_cols] = df_norm[numeric_cols].multiply(scaling_factor, axis=0)
 
     return df_norm
 
