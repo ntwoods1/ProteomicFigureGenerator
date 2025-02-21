@@ -20,15 +20,32 @@ def filter_data_by_selection(data, cell_lines, conditions):
     logger.info(f"Filtering data with {len(cell_lines)} cell lines and {len(conditions)} conditions")
     logger.info(f"Initial data shape: {data.shape}")
 
-    # Create masks for filtering
-    cell_line_mask = data.apply(
-        lambda row: any(cl.lower() in str(row.name).lower() for cl in cell_lines),
-        axis=1
-    )
-    condition_mask = data.apply(
-        lambda row: any(cond.lower() in str(row.name).lower() for cond in conditions),
-        axis=1
-    )
+    # Function to extract info from column name
+    def extract_column_info(col_name):
+        try:
+            # Remove the bracketed number and suffix
+            parts = col_name.split("]")[1].split(".PG.")[0].strip().split("_")
+            cell_line = parts[0]
+            # Treatment is everything between cell line and replicate number
+            treatment = "_".join(parts[1:-1])
+            return cell_line, treatment
+        except:
+            return None, None
+
+    # Create masks for filtering based on quantity columns
+    quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+    cell_line_mask = pd.Series(False, index=data.index)
+    condition_mask = pd.Series(False, index=data.index)
+
+    # Check each quantity column
+    for col in quantity_cols:
+        cell_line, treatment = extract_column_info(col)
+        if cell_line and treatment:
+            # Update masks if cell line or treatment matches (case-insensitive)
+            if any(cl.lower() == cell_line.lower() for cl in cell_lines):
+                cell_line_mask |= ~data[col].isna()
+            if any(cond.lower() == treatment.lower() for cond in conditions):
+                condition_mask |= ~data[col].isna()
 
     # Log the number of rows matching each filter
     logger.info(f"Rows matching cell line filter: {cell_line_mask.sum()}")
@@ -39,6 +56,10 @@ def filter_data_by_selection(data, cell_lines, conditions):
     logger.info(f"Final filtered data shape: {filtered_data.shape}")
 
     if filtered_data.empty:
+        logger.error("Filtering resulted in empty dataset")
+        logger.error(f"Selected cell lines: {cell_lines}")
+        logger.error(f"Selected conditions: {conditions}")
+        logger.error("Available quantity columns: " + ", ".join(quantity_cols))
         raise ValueError("Filtering resulted in empty dataset. Please check your selection criteria.")
 
     return filtered_data
