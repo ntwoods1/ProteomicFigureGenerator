@@ -118,7 +118,7 @@ def filter_by_peptide_count(df, min_peptides=1):
     return filtered_df, stats_dict
 
 def calculate_and_filter_cv(df, cv_cutoff=None, dataset_info=None):
-    """Calculate coefficient of variation (CV) for replicate samples and filter proteins based on CV cutoff."""
+    """Calculate coefficient of variation (CV) for replicate samples and filter proteins based on CV cutoff within cell lines."""
     if dataset_info is None:
         dataset_info = analyze_dataset_structure(df)
     if cv_cutoff is None:
@@ -126,21 +126,43 @@ def calculate_and_filter_cv(df, cv_cutoff=None, dataset_info=None):
 
     filtered_df = df.copy()
     cv_values = []
+    cell_line_masks = {}
 
-    # Process each replicate group separately
+    # Group replicates by cell line
+    cell_line_groups = {}
     for group, replicate_cols in dataset_info["replicates"].items():
-        if len(replicate_cols) > 1:  # Only calculate CV if we have multiple replicates
-            # Extract data for this group's replicates
-            group_data = df[replicate_cols]
+        cell_line = group.split('_')[0]  # Get cell line from group name
+        if cell_line not in cell_line_groups:
+            cell_line_groups[cell_line] = []
+        cell_line_groups[cell_line].append((group, replicate_cols))
 
-            # Calculate CV for this group
-            group_cv = (group_data.std(axis=1) / group_data.mean(axis=1) * 100)
-            cv_values.extend(group_cv.dropna().tolist())
+    # Process each cell line separately
+    for cell_line, groups in cell_line_groups.items():
+        cell_line_mask = pd.Series(True, index=df.index)
+        
+        for group, replicate_cols in groups:
+            if len(replicate_cols) > 1:  # Only calculate CV if we have multiple replicates
+                # Extract data for this group's replicates
+                group_data = df[replicate_cols]
 
-            # Update mask for this group
-            if cv_cutoff is not None:
-                mask = group_cv <= cv_cutoff
-                filtered_df = filtered_df[mask]
+                # Calculate CV for this group
+                group_cv = (group_data.std(axis=1) / group_data.mean(axis=1) * 100)
+                cv_values.extend(group_cv.dropna().tolist())
+
+                # Update mask for this group within cell line
+                if cv_cutoff is not None:
+                    cell_line_mask &= (group_cv <= cv_cutoff)
+
+        # Store mask for this cell line
+        cell_line_masks[cell_line] = cell_line_mask
+
+    # Combine masks from all cell lines
+    final_mask = pd.Series(False, index=df.index)
+    for mask in cell_line_masks.values():
+        final_mask |= mask
+
+    # Apply the combined mask
+    filtered_df = filtered_df[final_mask]
 
     if not cv_values:
         return df, {"proteins_passing_cv": len(df), "proteins_removed_cv": 0, "average_cv": 0}
