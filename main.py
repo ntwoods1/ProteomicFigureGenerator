@@ -8,6 +8,11 @@ import tempfile
 from utils import data_processing as dp
 from utils import visualization as viz
 from utils import statistics as stats
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configure Streamlit page
 try:
@@ -64,14 +69,31 @@ if uploaded_files:
         if st.button("Analyze Dataset"):
             for file in uploaded_files:
                 try:
+                    logger.info(f"Processing file: {file.name}")
                     # Load data
                     if file.name.endswith('.csv'):
                         data = pd.read_csv(file)
                     else:
                         data = pd.read_excel(file)
 
-                    # Analyze dataset structure
-                    dataset_info = dp.analyze_dataset_structure(data)
+                    logger.info(f"Successfully loaded data with shape: {data.shape}")
+
+                    # Validate data is not empty
+                    if data.empty:
+                        raise ValueError("Uploaded file contains no data")
+
+                    # Convert any boolean columns to string to avoid np.False_ errors
+                    bool_columns = data.select_dtypes(include=['bool']).columns
+                    for col in bool_columns:
+                        data[col] = data[col].astype(str)
+
+                    # Analyze dataset structure with better error handling
+                    try:
+                        dataset_info = dp.analyze_dataset_structure(data)
+                        logger.info("Successfully analyzed dataset structure")
+                    except Exception as e:
+                        logger.error(f"Error in dataset structure analysis: {str(e)}")
+                        raise ValueError(f"Failed to analyze dataset structure: {str(e)}")
 
                     st.write(f"### Dataset: {file.name}")
                     st.write("#### Summary")
@@ -91,9 +113,18 @@ if uploaded_files:
 
                     # Store analysis results
                     st.session_state.dataset_info[file.name] = dataset_info
+                    logger.info(f"Successfully processed and stored dataset info for {file.name}")
 
+                except pd.errors.EmptyDataError:
+                    st.error(f"Error: The file {file.name} is empty")
+                    logger.error(f"Empty file error: {file.name}")
+                except pd.errors.ParserError as e:
+                    st.error(f"Error: Unable to parse {file.name}. Please ensure it's a valid Excel/CSV file")
+                    logger.error(f"Parser error for {file.name}: {str(e)}")
                 except Exception as e:
-                    st.error(f"Error analyzing {file.name}: {str(e)}")
+                    st.error(f"Error processing {file.name}: {str(e)}")
+                    logger.error(f"Unexpected error processing {file.name}: {str(e)}")
+                    logger.exception("Detailed error information:")
 
     with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")
