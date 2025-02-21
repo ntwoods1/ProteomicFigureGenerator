@@ -214,8 +214,29 @@ if uploaded_files:
                     st.write(f"Selected Cell Lines: {', '.join(selected_cell_lines)}")
                     st.write(f"Selected Conditions: {', '.join(selected_conditions)}")
 
+    # CV Analysis options
+    enable_cv_filter = False
+    cv_cutoff = None
+    
     with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")
+        
+        # Add CV calculation and filtering options
+        enable_cv_filter = st.checkbox(
+            "Enable CV Filtering",
+            value=False,
+            help="Filter proteins based on coefficient of variation (CV) of replicate samples"
+        )
+
+        if enable_cv_filter:
+            cv_cutoff = st.slider(
+                "CV Cutoff (%)",
+                min_value=0,
+                max_value=100,
+                value=30,
+                help="Maximum allowed coefficient of variation between replicates"
+            )
+
         min_peptides = st.number_input(
             "Minimum number of peptides required",
             min_value=1,
@@ -266,25 +287,7 @@ if uploaded_files:
                     st.sidebar.error(f"Error processing {file.name}: {str(e)}")
 
     with st.sidebar.expander("3. Data Preprocessing", expanded=True):
-        st.subheader("1. CV Analysis and Filtering")
-
-        # Add CV calculation and filtering options
-        enable_cv_filter = st.checkbox(
-            "Enable CV Filtering",
-            value=False,
-            help="Filter proteins based on coefficient of variation (CV) of replicate samples"
-        )
-
-        if enable_cv_filter:
-            cv_cutoff = st.slider(
-                "CV Cutoff (%)",
-                min_value=0,
-                max_value=100,
-                value=30,
-                help="Maximum allowed coefficient of variation between replicates"
-            )
-        else:
-            cv_cutoff = None
+        st.subheader("1. Data Preprocessing")
 
         st.subheader("2. Filtering Options")
         min_detection_rate = st.slider(
