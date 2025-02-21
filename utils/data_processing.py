@@ -282,3 +282,53 @@ def batch_correct(df, batch_col, data_cols):
             df_corrected.loc[batch_mask, col] -= batch_mean
 
     return df_corrected
+
+def calculate_and_filter_cv(df, cv_cutoff=None, dataset_info=None):
+    """
+    Calculate coefficient of variation (CV) for replicate samples and filter proteins based on CV cutoff.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        cv_cutoff (float): Maximum allowed CV percentage (e.g., 30 for 30%)
+        dataset_info (dict): Dataset structure information containing replicate groupings
+
+    Returns:
+        tuple: (filtered_df, cv_stats)
+    """
+    if cv_cutoff is None or dataset_info is None:
+        return df, {"proteins_passing_cv": len(df), "proteins_removed_cv": 0, "average_cv": 0}
+
+    filtered_df = df.copy()
+    cv_values = []
+
+    # Get replicate groups from dataset_info
+    for group, replicate_cols in dataset_info["replicates"].items():
+        if len(replicate_cols) > 1:  # Only calculate CV if we have multiple replicates
+            # Find the corresponding quantity columns
+            quantity_cols = [col for col in df.columns if col.endswith("PG.Quantity") and any(rep in col for rep in replicate_cols)]
+
+            if quantity_cols:
+                # Calculate CV for this group
+                group_data = df[quantity_cols]
+                cv = (group_data.std(axis=1) / group_data.mean(axis=1) * 100)
+                cv_values.extend(cv.dropna().tolist())
+
+    if not cv_values:
+        return df, {"proteins_passing_cv": len(df), "proteins_removed_cv": 0, "average_cv": 0}
+
+    # Calculate max CV for each protein across all replicate groups
+    max_cv = pd.Series(cv_values).max()
+
+    # Apply CV filter if cutoff is provided
+    if cv_cutoff is not None:
+        mask = max_cv <= cv_cutoff
+        filtered_df = filtered_df[mask]
+
+    # Calculate statistics
+    stats = {
+        "proteins_passing_cv": len(filtered_df),
+        "proteins_removed_cv": len(df) - len(filtered_df),
+        "average_cv": float(np.mean(cv_values))
+    }
+
+    return filtered_df, stats

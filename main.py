@@ -145,7 +145,27 @@ if uploaded_files:
                     st.sidebar.error(f"Error processing {file.name}: {str(e)}")
 
     with st.sidebar.expander("3. Data Preprocessing", expanded=True):
-        st.subheader("1. Filtering Options")
+        st.subheader("1. CV Analysis and Filtering")
+
+        # Add CV calculation and filtering options
+        enable_cv_filter = st.checkbox(
+            "Enable CV Filtering",
+            value=False,
+            help="Filter proteins based on coefficient of variation (CV) of replicate samples"
+        )
+
+        if enable_cv_filter:
+            cv_cutoff = st.slider(
+                "CV Cutoff (%)",
+                min_value=0,
+                max_value=100,
+                value=30,
+                help="Maximum allowed coefficient of variation between replicates"
+            )
+        else:
+            cv_cutoff = None
+
+        st.subheader("2. Filtering Options")
         min_detection_rate = st.slider(
             "Minimum Detection Rate",
             0.0, 1.0, 0.5,
@@ -159,7 +179,7 @@ if uploaded_files:
             help="Minimum number of samples where protein must be detected"
         )
 
-        st.subheader("2. Missing Value Handling")
+        st.subheader("3. Missing Value Handling")
         missing_value_method = st.selectbox(
             "Missing Value Method",
             ["knn", "mean", "median", "constant"],
@@ -171,7 +191,7 @@ if uploaded_files:
             help="Minimum ratio of valid values required to keep a protein"
         )
 
-        st.subheader("3. Normalization")
+        st.subheader("4. Normalization")
         normalization_method = st.selectbox(
             "Normalization Method",
             ["none", "log2", "zscore", "median", "loess"],
@@ -194,7 +214,7 @@ if uploaded_files:
         else:
             center_method = None
 
-        st.subheader("4. Quality Control")
+        st.subheader("5. Quality Control")
         outlier_method = st.selectbox(
             "Outlier Detection Method",
             ["zscore", "iqr"],
@@ -223,6 +243,18 @@ if uploaded_files:
                     validation_results = dp.validate_data(data)
 
                     if validation_results["valid"]:
+                        # Calculate CV for replicates if enabled
+                        if enable_cv_filter:
+                            data, cv_stats = dp.calculate_and_filter_cv(
+                                data,
+                                cv_cutoff=cv_cutoff,
+                                dataset_info=st.session_state.dataset_info.get(file.name, None)
+                            )
+                            st.sidebar.write("### CV Filtering Summary")
+                            st.sidebar.write(f"- Proteins passing CV filter: {cv_stats['proteins_passing_cv']}")
+                            st.sidebar.write(f"- Proteins removed by CV: {cv_stats['proteins_removed_cv']}")
+                            st.sidebar.write(f"- Average CV: {cv_stats['average_cv']:.2f}%")
+
                         # 1. Filter proteins
                         filtered_data, filter_stats = dp.filter_proteins(
                             data,
