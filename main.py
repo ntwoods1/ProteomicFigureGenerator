@@ -259,11 +259,23 @@ if uploaded_files:
 
                     # Apply filtering with CV analysis on raw data first
                     try:
+                        # First apply peptide filtering
                         filtered_data, filter_stats = dp.filter_by_peptide_count(
                             data,
-                            min_peptides=min_peptides,
-                            cv_cutoff=cv_cutoff if enable_cv_filter else None
+                            min_peptides=min_peptides
                         )
+                        
+                        # Then apply CV filtering if enabled
+                        if enable_cv_filter:
+                            dataset_info = st.session_state.dataset_info.get(file.name)
+                            if not dataset_info:
+                                raise ValueError("Dataset information not found. Please analyze the dataset structure first.")
+                            filtered_data, cv_stats = dp.calculate_and_filter_cv(
+                                filtered_data,
+                                cv_cutoff=cv_cutoff,
+                                dataset_info=dataset_info
+                            )
+                            filter_stats.update(cv_stats)
 
                         # Store processed data and parameters
                         st.session_state.processed_data[file.name] = filtered_data
