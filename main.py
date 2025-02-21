@@ -285,20 +285,67 @@ if uploaded_files:
     with st.sidebar.expander("3. CV-based Filtering", expanded=True):
         st.write("Filter proteins based on coefficient of variation between replicates")
         
-        enable_cv_filter = st.checkbox(
-            "Enable CV Filtering",
-            value=False,
-            help="Filter proteins based on coefficient of variation (CV) of replicate samples"
+        cv_cutoff = st.slider(
+            "CV Cutoff (%)",
+            min_value=0,
+            max_value=100,
+            value=20,
+            help="Maximum allowed coefficient of variation between replicates"
         )
 
-        if enable_cv_filter:
-            cv_cutoff = st.slider(
-                "CV Cutoff (%)",
-                min_value=0,
-                max_value=100,
-                value=20,
-                help="Maximum allowed coefficient of variation between replicates"
-            )
+        if st.button("Apply CV Filtering"):
+            for file in uploaded_files:
+                if file.name in st.session_state.processed_data and file.name in st.session_state.dataset_info:
+                    data = st.session_state.processed_data[file.name]
+                    dataset_info = st.session_state.dataset_info[file.name]
+
+                    # Calculate CV stats per cell line
+                    cell_line_stats = {}
+                    for cell_line in dataset_info["cell_lines"]:
+                        # Filter groups for this cell line
+                        cell_line_groups = {k: v for k, v in dataset_info["replicates"].items() 
+                                         if k.startswith(cell_line)}
+                        
+                        # Create temporary dataset info for this cell line
+                        cell_line_info = {
+                            "replicates": cell_line_groups,
+                            "cell_lines": [cell_line],
+                            "conditions": dataset_info["conditions"]
+                        }
+                        
+                        # Apply CV filtering for this cell line
+                        filtered_data, cv_stats = dp.calculate_and_filter_cv(
+                            data,
+                            cv_cutoff=cv_cutoff,
+                            dataset_info=cell_line_info
+                        )
+                        
+                        cell_line_stats[cell_line] = cv_stats
+
+                    # Show results for each cell line
+                    st.sidebar.write("### CV Filtering Results")
+                    for cell_line, stats in cell_line_stats.items():
+                        st.sidebar.write(f"**{cell_line}:**")
+                        st.sidebar.write(f"- Proteins passing CV filter: {stats['proteins_passing_cv']}")
+                        st.sidebar.write(f"- Proteins removed: {stats['proteins_removed_cv']}")
+                        st.sidebar.write(f"- Average CV: {stats['average_cv']:.2f}%")
+                        st.sidebar.write("---")
+
+                    # Apply overall CV filtering
+                    filtered_data, overall_stats = dp.calculate_and_filter_cv(
+                        data,
+                        cv_cutoff=cv_cutoff,
+                        dataset_info=dataset_info
+                    )
+
+                    # Update processed data
+                    st.session_state.processed_data[file.name] = filtered_data
+                    
+                    # Show overall results
+                    st.sidebar.write("### Overall Results")
+                    st.sidebar.write(f"Total proteins passing filter: {overall_stats['proteins_passing_cv']}")
+                    st.sidebar.write(f"Total proteins removed: {overall_stats['proteins_removed_cv']}")
+                    st.sidebar.write(f"Overall average CV: {overall_stats['average_cv']:.2f}%")
 
     with st.sidebar.expander("4. Data Preprocessing", expanded=True):
         st.subheader("1. Data Preprocessing")
