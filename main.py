@@ -635,7 +635,91 @@ if uploaded_files:
                     key="volcano_dataset"
                 )
 
-                data = st.session_state.processed_data[selected_dataset]
+                if selected_dataset:
+                    data = st.session_state.processed_data[selected_dataset]
+                    dataset_info = st.session_state.dataset_info.get(selected_dataset)
+
+                    if dataset_info:
+                        # Cell line selection
+                        selected_cell_lines = st.multiselect(
+                            "Select Cell Lines to Compare",
+                            options=dataset_info['cell_lines'],
+                            max_selections=2,
+                            key="volcano_cell_lines"
+                        )
+
+                        # Treatment selection
+                        selected_treatments = st.multiselect(
+                            "Select Treatment Conditions to Compare",
+                            options=dataset_info['conditions'],
+                            max_selections=2,
+                            key="volcano_treatments"
+                        )
+
+                        if len(selected_cell_lines) == 2 or (len(selected_cell_lines) == 1 and len(selected_treatments) == 2):
+                            try:
+                                # Get relevant columns for comparison
+                                if len(selected_cell_lines) == 2:
+                                    # Compare between cell lines
+                                    condition = selected_treatments[0] if selected_treatments else dataset_info['conditions'][0]
+                                    group1_cols = [col for col in data.columns if col.endswith('.PG.Quantity') 
+                                                and selected_cell_lines[0] in col and condition in col]
+                                    group2_cols = [col for col in data.columns if col.endswith('.PG.Quantity') 
+                                                and selected_cell_lines[1] in col and condition in col]
+                                    comparison_name = f"{selected_cell_lines[1]} vs {selected_cell_lines[0]}"
+                                else:
+                                    # Compare between treatments
+                                    cell_line = selected_cell_lines[0]
+                                    group1_cols = [col for col in data.columns if col.endswith('.PG.Quantity') 
+                                                and cell_line in col and selected_treatments[0] in col]
+                                    group2_cols = [col for col in data.columns if col.endswith('.PG.Quantity') 
+                                                and cell_line in col and selected_treatments[1] in col]
+                                    comparison_name = f"{selected_treatments[1]} vs {selected_treatments[0]}"
+
+                                # Calculate fold changes and p-values
+                                group1_data = data[group1_cols].mean(axis=1)
+                                group2_data = data[group2_cols].mean(axis=1)
+                                
+                                # Calculate log2 fold change
+                                log2fc = np.log2(group2_data) - np.log2(group1_data)
+                                
+                                # Calculate p-values using t-test
+                                pvalues = []
+                                for idx in data.index:
+                                    g1_values = data.loc[idx, group1_cols].dropna()
+                                    g2_values = data.loc[idx, group2_cols].dropna()
+                                    if len(g1_values) >= 2 and len(g2_values) >= 2:
+                                        _, pval = stats.ttest_ind(g1_values, g2_values)
+                                        pvalues.append(pval)
+                                    else:
+                                        pvalues.append(1.0)
+                                
+                                # Create volcano plot data
+                                volcano_data = pd.DataFrame({
+                                    'log2FoldChange': log2fc,
+                                    '-log10(p-value)': -np.log10(pvalues),
+                                    'Gene': data.get('Gene Name', data.index),
+                                    'Description': data.get('Description', '')
+                                })
+
+                                # Plot using create_interactive_volcano
+                                fig = viz.create_interactive_volcano(
+                                    volcano_data,
+                                    x_col='log2FoldChange',
+                                    y_col='-log10(p-value)',
+                                    gene_col='Gene',
+                                    cutoffs={'p_value': 1.3, 'fold_change': 1.0}
+                                )
+                                
+                                # Update title
+                                fig.update_layout(title=f"Volcano Plot: {comparison_name}")
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            except Exception as e:
+                                st.error(f"Error generating volcano plot: {str(e)}")
+                        else:
+                            st.info("Please select either two cell lines to compare (with same treatment) or one cell line with two treatments to compare")
 
                 # Only show quantity and statistical columns
                 quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
