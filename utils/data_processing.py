@@ -4,6 +4,41 @@ from scipy import stats
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 
+def filter_by_peptide_count(df, min_peptides=1):
+    """
+    Filter proteins based on the number of peptides used for identification.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        min_peptides (int): Minimum number of peptides required for protein identification
+
+    Returns:
+        tuple: (filtered_df, stats_dict)
+    """
+    # Find columns ending with "PG.NrOfStrippedSequencesIdentified"
+    peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified")]
+
+    if not peptide_cols:
+        raise ValueError("No peptide count columns found (ending with 'PG.NrOfStrippedSequencesIdentified')")
+
+    # Get maximum peptide count for each protein across all samples
+    max_peptides = df[peptide_cols].max(axis=1)
+
+    # Filter based on threshold
+    mask = max_peptides >= min_peptides
+    filtered_df = df[mask].copy()
+
+    # Calculate statistics
+    stats_dict = {
+        "total_proteins": len(df),
+        "proteins_passing_filter": len(filtered_df),
+        "proteins_removed": len(df) - len(filtered_df),
+        "peptide_threshold": min_peptides,
+        "max_peptides_found": max_peptides.max()
+    }
+
+    return filtered_df, stats_dict
+
 def validate_data(df):
     """Validate uploaded data format and content."""
     validation_results = {
@@ -24,6 +59,11 @@ def validate_data(df):
     if len(numeric_cols) < 2:
         validation_results["valid"] = False
         validation_results["errors"].append("At least 2 numeric columns required for analysis")
+
+    # Check for peptide count columns
+    peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified")]
+    if not peptide_cols:
+        validation_results["warnings"].append("No peptide count columns found (ending with 'PG.NrOfStrippedSequencesIdentified')")
 
     return validation_results
 
