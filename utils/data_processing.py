@@ -68,6 +68,67 @@ def validate_data(df):
 
     return validation_results
 
+def analyze_dataset_structure(df):
+    """
+    Analyze the structure of proteomics dataset to identify cell lines, conditions, and replicates.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+
+    Returns:
+        dict: Dictionary containing dataset structure information
+    """
+    # Find all quantity columns
+    quantity_cols = [col for col in df.columns if col.endswith("PG.Quantity")]
+
+    # Parse sample information from column names
+    dataset_info = {
+        "quantity_columns": quantity_cols,
+        "cell_lines": set(),
+        "conditions": set(),
+        "replicates": {}
+    }
+
+    for col in quantity_cols:
+        # Extract information from column name
+        # Expected format: [N] CellLine_Treatment_...Rep{X}
+        try:
+            # Remove the bracketed number and .PG.Quantity suffix
+            sample_info = col.split("]")[1].split(".PG.Quantity")[0].strip()
+            parts = sample_info.split("_")
+
+            if len(parts) >= 3:  # Ensure we have enough parts
+                cell_line = parts[0]
+                # Treatment is everything between cell line and replicate
+                treatment = "_".join(parts[1:-1])
+                replicate = parts[-1]
+
+                dataset_info["cell_lines"].add(cell_line)
+                dataset_info["conditions"].add(treatment)
+
+                # Group replicates by cell line and treatment
+                group_key = f"{cell_line}_{treatment}"
+                if group_key not in dataset_info["replicates"]:
+                    dataset_info["replicates"][group_key] = []
+                dataset_info["replicates"][group_key].append(replicate)
+
+        except Exception as e:
+            print(f"Error parsing column name {col}: {str(e)}")
+            continue
+
+    # Convert sets to sorted lists for better display
+    dataset_info["cell_lines"] = sorted(list(dataset_info["cell_lines"]))
+    dataset_info["conditions"] = sorted(list(dataset_info["conditions"]))
+
+    # Add summary statistics
+    dataset_info["summary"] = {
+        "num_cell_lines": len(dataset_info["cell_lines"]),
+        "num_conditions": len(dataset_info["conditions"]),
+        "num_quantity_columns": len(quantity_cols)
+    }
+
+    return dataset_info
+
 def filter_proteins(df, min_detection_rate=0.5, min_samples=2):
     """Filter proteins based on detection rate and minimum sample count."""
     numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -86,7 +147,7 @@ def filter_proteins(df, min_detection_rate=0.5, min_samples=2):
         "removed_proteins": len(df) - len(filtered_df)
     }
 
-def normalize_data(df, method="log2", center_scale=True, center_method="zscore"):
+def normalize_data(df, method="log2", center_scale=True, center_method="zscore", quantity_only=True):
     """
     Normalize data using specified method.
 
@@ -95,12 +156,21 @@ def normalize_data(df, method="log2", center_scale=True, center_method="zscore")
         method (str): Normalization method ('log2', 'zscore', 'median', 'loess', 'none')
         center_scale (bool): Whether to apply row centering
         center_method (str): Method for row centering ('zscore' or 'scale100')
+        quantity_only (bool): Whether to only normalize PG.Quantity columns
 
     Returns:
         pd.DataFrame: Normalized dataframe
     """
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
     df_norm = df.copy()
+
+    # Select columns to normalize
+    if quantity_only:
+        numeric_cols = [col for col in df.columns if col.endswith("PG.Quantity")]
+    else:
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    if not numeric_cols:
+        raise ValueError("No numeric columns found for normalization")
 
     # First apply column-wise normalization
     if method == "log2":

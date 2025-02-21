@@ -52,10 +52,50 @@ if 'processed_data' not in st.session_state:
     st.session_state.processed_data = {}
 if 'processing_params' not in st.session_state:
     st.session_state.processing_params = {}
+if 'dataset_info' not in st.session_state:
+    st.session_state.dataset_info = {}
+
 
 # Data processing options
 if uploaded_files:
-    with st.sidebar.expander("1. Peptide-based Filtering", expanded=True):
+    with st.sidebar.expander("1. Dataset Structure", expanded=True):
+        st.write("Analyze dataset structure")
+
+        if st.button("Analyze Dataset"):
+            for file in uploaded_files:
+                try:
+                    # Load data
+                    if file.name.endswith('.csv'):
+                        data = pd.read_csv(file)
+                    else:
+                        data = pd.read_excel(file)
+
+                    # Analyze dataset structure
+                    dataset_info = dp.analyze_dataset_structure(data)
+
+                    st.write(f"### Dataset: {file.name}")
+                    st.write("#### Summary")
+                    st.write(f"- Number of cell lines: {dataset_info['summary']['num_cell_lines']}")
+                    st.write(f"- Number of conditions: {dataset_info['summary']['num_conditions']}")
+                    st.write(f"- Number of quantity columns: {dataset_info['summary']['num_quantity_columns']}")
+
+                    st.write("#### Cell Lines")
+                    st.write(", ".join(dataset_info['cell_lines']))
+
+                    st.write("#### Treatment Conditions")
+                    st.write(", ".join(dataset_info['conditions']))
+
+                    st.write("#### Sample Groups and Replicates")
+                    for group, replicates in dataset_info['replicates'].items():
+                        st.write(f"- {group}: {len(replicates)} replicates")
+
+                    # Store analysis results
+                    st.session_state.dataset_info[file.name] = dataset_info
+
+                except Exception as e:
+                    st.error(f"Error analyzing {file.name}: {str(e)}")
+
+    with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")
         min_peptides = st.number_input(
             "Minimum number of peptides required",
@@ -104,7 +144,7 @@ if uploaded_files:
                 except Exception as e:
                     st.sidebar.error(f"Error processing {file.name}: {str(e)}")
 
-    with st.sidebar.expander("2. Data Preprocessing", expanded=True):
+    with st.sidebar.expander("3. Data Preprocessing", expanded=True):
         st.subheader("1. Filtering Options")
         min_detection_rate = st.slider(
             "Minimum Detection Rate",
@@ -203,7 +243,8 @@ if uploaded_files:
                                 cleaned_data,
                                 method=normalization_method,
                                 center_scale=enable_row_centering,
-                                center_method=center_method if enable_row_centering else None
+                                center_method=center_method if enable_row_centering else None,
+                                quantity_only=True
                             )
                         else:
                             processed_data = cleaned_data
@@ -260,6 +301,24 @@ if uploaded_files:
                 st.write("### Processing Parameters")
                 if selected_dataset in st.session_state.processing_params:
                     st.json(st.session_state.processing_params[selected_dataset])
+
+                st.write("### Dataset Structure Analysis")
+                if selected_dataset in st.session_state.dataset_info:
+                    dataset_info = st.session_state.dataset_info[selected_dataset]
+                    st.write("#### Summary")
+                    st.write(f"- Number of cell lines: {dataset_info['summary']['num_cell_lines']}")
+                    st.write(f"- Number of conditions: {dataset_info['summary']['num_conditions']}")
+                    st.write(f"- Number of quantity columns: {dataset_info['summary']['num_quantity_columns']}")
+
+                    st.write("#### Cell Lines")
+                    st.write(", ".join(dataset_info['cell_lines']))
+
+                    st.write("#### Treatment Conditions")
+                    st.write(", ".join(dataset_info['conditions']))
+
+                    st.write("#### Sample Groups and Replicates")
+                    for group, replicates in dataset_info['replicates'].items():
+                        st.write(f"- {group}: {len(replicates)} replicates")
 
 
         # Quality Control Tab
