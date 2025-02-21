@@ -9,6 +9,7 @@ from utils import data_processing as dp
 from utils import visualization as viz
 from utils import statistics as stats
 import logging
+from typing import Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +61,36 @@ if 'processing_params' not in st.session_state:
 if 'dataset_info' not in st.session_state:
     st.session_state.dataset_info = {}
 
+def load_and_preprocess_data(file) -> Dict[str, Any]:
+    """Load and preprocess data from Excel/CSV file with proper type handling."""
+    try:
+        logger.info(f"Loading file: {file.name}")
+
+        # Read data with explicit type handling
+        if file.name.endswith('.csv'):
+            data = pd.read_csv(file)
+        else:
+            # Use a dictionary comprehension to convert all boolean columns to object type
+            data = pd.read_excel(
+                file,
+                dtype={col: str for col in pd.read_excel(file, nrows=0).select_dtypes(include=['bool']).columns}
+            )
+
+        logger.info(f"Successfully loaded data with shape: {data.shape}")
+
+        # Convert any remaining boolean values to strings
+        for col in data.columns:
+            if data[col].dtype == bool or "bool" in str(data[col].dtype):
+                logger.info(f"Converting boolean column to string: {col}")
+                data[col] = data[col].astype(str)
+            elif data[col].dtype == object:
+                # Handle any numpy.bool_ objects in object columns
+                data[col] = data[col].apply(lambda x: str(x) if isinstance(x, (bool, np.bool_)) else x)
+
+        return {"success": True, "data": data, "error": None}
+    except Exception as e:
+        logger.error(f"Error loading file {file.name}: {str(e)}")
+        return {"success": False, "data": None, "error": str(e)}
 
 # Data processing options
 if uploaded_files:
@@ -68,63 +99,31 @@ if uploaded_files:
 
         if st.button("Analyze Dataset"):
             for file in uploaded_files:
-                try:
-                    logger.info(f"Processing file: {file.name}")
-                    # Load data
-                    if file.name.endswith('.csv'):
-                        data = pd.read_csv(file)
-                    else:
-                        data = pd.read_excel(file)
+                result = load_and_preprocess_data(file)
 
-                    logger.info(f"Successfully loaded data with shape: {data.shape}")
-
-                    # Validate data is not empty
-                    if data.empty:
-                        raise ValueError("Uploaded file contains no data")
-
-                    # Convert any boolean columns to string to avoid np.False_ errors
-                    bool_columns = data.select_dtypes(include=['bool']).columns
-                    for col in bool_columns:
-                        data[col] = data[col].astype(str)
-
-                    # Analyze dataset structure with better error handling
+                if result["success"]:
+                    data = result["data"]
                     try:
+                        # Analyze dataset structure
                         dataset_info = dp.analyze_dataset_structure(data)
-                        logger.info("Successfully analyzed dataset structure")
+
+                        st.write(f"### Dataset: {file.name}")
+                        st.write("#### Summary")
+                        st.write(f"- Number of cell lines: {dataset_info['summary']['num_cell_lines']}")
+                        st.write(f"- Number of conditions: {dataset_info['summary']['num_conditions']}")
+                        st.write(f"- Number of quantity columns: {dataset_info['summary']['num_quantity_columns']}")
+
+                        # Store data and analysis results
+                        st.session_state.datasets[file.name] = data
+                        st.session_state.dataset_info[file.name] = dataset_info
+
+                        logger.info(f"Successfully processed and stored dataset info for {file.name}")
+
                     except Exception as e:
-                        logger.error(f"Error in dataset structure analysis: {str(e)}")
-                        raise ValueError(f"Failed to analyze dataset structure: {str(e)}")
-
-                    st.write(f"### Dataset: {file.name}")
-                    st.write("#### Summary")
-                    st.write(f"- Number of cell lines: {dataset_info['summary']['num_cell_lines']}")
-                    st.write(f"- Number of conditions: {dataset_info['summary']['num_conditions']}")
-                    st.write(f"- Number of quantity columns: {dataset_info['summary']['num_quantity_columns']}")
-
-                    st.write("#### Cell Lines")
-                    st.write(", ".join(dataset_info['cell_lines']))
-
-                    st.write("#### Treatment Conditions")
-                    st.write(", ".join(dataset_info['conditions']))
-
-                    st.write("#### Sample Groups and Replicates")
-                    for group, replicates in dataset_info['replicates'].items():
-                        st.write(f"- {group}: {len(replicates)} replicates")
-
-                    # Store analysis results
-                    st.session_state.dataset_info[file.name] = dataset_info
-                    logger.info(f"Successfully processed and stored dataset info for {file.name}")
-
-                except pd.errors.EmptyDataError:
-                    st.error(f"Error: The file {file.name} is empty")
-                    logger.error(f"Empty file error: {file.name}")
-                except pd.errors.ParserError as e:
-                    st.error(f"Error: Unable to parse {file.name}. Please ensure it's a valid Excel/CSV file")
-                    logger.error(f"Parser error for {file.name}: {str(e)}")
-                except Exception as e:
-                    st.error(f"Error processing {file.name}: {str(e)}")
-                    logger.error(f"Unexpected error processing {file.name}: {str(e)}")
-                    logger.exception("Detailed error information:")
+                        logger.error(f"Error analyzing dataset structure for {file.name}: {str(e)}")
+                        st.error(f"Error analyzing dataset structure for {file.name}: {str(e)}")
+                else:
+                    st.error(f"Error loading {file.name}: {result['error']}")
 
     with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")

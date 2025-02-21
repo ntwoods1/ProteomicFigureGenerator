@@ -16,5 +16,6 @@ dependencies = [
     "statsmodels>=0.14.4",
     "streamlit>=1.42.2",
     "trafilatura>=2.0.0",
+    "twilio>=9.4.6",
     "upsetplot>=0.9.0",
 ]
