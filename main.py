@@ -536,6 +536,29 @@ if uploaded_files:
                     outlier_summary = outliers.sum().to_frame("Number of Outliers")
                     st.dataframe(outlier_summary)
 
+                    st.write("### CV Analysis")
+                    if st.button("Calculate and Download CV Analysis"):
+                        try:
+                            # Calculate CV table
+                            cv_table = dp.calculate_cv_table(data, st.session_state.dataset_info[selected_dataset])
+
+                            # Convert to CSV
+                            csv = cv_table.to_csv()
+
+                            # Create download button
+                            st.download_button(
+                                label="Download CV Analysis CSV",
+                                data=csv,
+                                file_name="cv_analysis.csv",
+                                mime="text/csv",
+                            )
+
+                            # Display preview
+                            st.write("### CV Analysis Preview")
+                            st.dataframe(cv_table.head())
+                        except Exception as e:
+                            st.error(f"Error generating CV analysis: {str(e)}")
+
 
         # Volcano Plot Tab
         with tab3:
