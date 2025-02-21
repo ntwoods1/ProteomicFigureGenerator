@@ -15,6 +15,21 @@ from typing import Dict, Any
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def filter_data_by_selection(data, cell_lines, conditions):
+    """Filter data based on selected cell lines and conditions."""
+    # Create masks for filtering
+    cell_line_mask = data.apply(
+        lambda row: any(cl in str(row.name) for cl in cell_lines),
+        axis=1
+    )
+    condition_mask = data.apply(
+        lambda row: any(cond in str(row.name) for cond in conditions),
+        axis=1
+    )
+
+    # Apply both filters
+    return data[cell_line_mask & condition_mask]
+
 # Configure Streamlit page
 try:
     st.set_page_config(
@@ -583,18 +598,3 @@ st.markdown("""
 ---
 Created with ❤️ using Streamlit
 """)
-
-def filter_data_by_selection(data, cell_lines, conditions):
-    """Filter data based on selected cell lines and conditions."""
-    # Create masks for filtering
-    cell_line_mask = data.apply(
-        lambda row: any(cl in str(row.name) for cl in cell_lines),
-        axis=1
-    )
-    condition_mask = data.apply(
-        lambda row: any(cond in str(row.name) for cond in conditions),
-        axis=1
-    )
-
-    # Apply both filters
-    return data[cell_line_mask & condition_mask]
