@@ -446,7 +446,6 @@ if uploaded_files:
                             st.sidebar.write(f"- Cell Lines: {', '.join(selected_cell_lines)}")
                             st.sidebar.write(f"- Conditions: {', '.join(selected_conditions)}")
 
-
                         # 1. Filter proteins
                         filtered_data, filter_stats = dp.filter_proteins(
                             data,
@@ -454,43 +453,24 @@ if uploaded_files:
                             min_samples=min_samples
                         )
 
-                        # 2. Handle missing values
-                        cleaned_data = dp.handle_missing_values(
-                            filtered_data,
-                            method=missing_value_method,
-                            min_valid_values=min_valid_values
-                        )
-
-                        # 3. Normalize data
-                        if normalization_method != "none":
-                            normalized_data = dp.normalize_data(
-                                cleaned_data,
-                                method=normalization_method,
-                                center_scale=enable_row_centering,
-                                center_method=center_method if enable_row_centering else None,
-                                quantity_only=True
-                            )
-                        else:
-                            normalized_data = cleaned_data
-
-                        # 4. Calculate CV for replicates if enabled
-                        if enable_cv_filter:
+                        # 2. Apply CV filtering if enabled
+                        if cv_cutoff is not None:
                             try:
                                 logger.info("Starting CV calculation")
-                                logger.info(f"Data shape before CV calculation: {normalized_data.shape}")
+                                logger.info(f"Data shape before CV calculation: {filtered_data.shape}")
 
                                 # Get the dataset info for replicate information
                                 dataset_info = st.session_state.dataset_info.get(file.name)
                                 if not dataset_info:
                                     raise ValueError("Dataset information not found. Please analyze the dataset structure first.")
 
-                                processed_data, cv_stats = dp.calculate_and_filter_cv(
-                                    normalized_data,
+                                filtered_data, cv_stats = dp.calculate_and_filter_cv(
+                                    filtered_data,
                                     cv_cutoff=cv_cutoff,
                                     dataset_info=dataset_info
                                 )
 
-                                logger.info(f"Data shape after CV calculation: {processed_data.shape}")
+                                logger.info(f"Data shape after CV calculation: {filtered_data.shape}")
                                 logger.info(f"CV stats: {cv_stats}")
 
                                 st.sidebar.write("### CV Filtering Summary")
@@ -501,8 +481,25 @@ if uploaded_files:
                                 logger.error(f"Error in CV calculation: {str(e)}")
                                 st.sidebar.error(f"Error in CV calculation: {str(e)}")
                                 raise e
+
+                        # 3. Handle missing values
+                        cleaned_data = dp.handle_missing_values(
+                            filtered_data,
+                            method=missing_value_method,
+                            min_valid_values=min_valid_values
+                        )
+
+                        # 4. Normalize data
+                        if normalization_method != "none":
+                            processed_data = dp.normalize_data(
+                                cleaned_data,
+                                method=normalization_method,
+                                center_scale=enable_row_centering,
+                                center_method=center_method if enable_row_centering else None,
+                                quantity_only=True
+                            )
                         else:
-                            processed_data = normalized_data
+                            processed_data = cleaned_data
 
                         # 4. Calculate quality metrics
                         qc_metrics = dp.calculate_quality_metrics(processed_data)
