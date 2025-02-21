@@ -221,22 +221,6 @@ if uploaded_files:
     with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")
         
-        # Add CV calculation and filtering options
-        enable_cv_filter = st.checkbox(
-            "Enable CV Filtering",
-            value=False,
-            help="Filter proteins based on coefficient of variation (CV) of replicate samples"
-        )
-
-        if enable_cv_filter:
-            cv_cutoff = st.slider(
-                "CV Cutoff (%)",
-                min_value=0,
-                max_value=100,
-                value=30,
-                help="Maximum allowed coefficient of variation between replicates"
-            )
-
         min_peptides = st.number_input(
             "Minimum number of peptides required",
             min_value=1,
@@ -298,7 +282,25 @@ if uploaded_files:
                 except Exception as e:
                     st.sidebar.error(f"Error processing {file.name}: {str(e)}")
 
-    with st.sidebar.expander("3. Data Preprocessing", expanded=True):
+    with st.sidebar.expander("3. CV-based Filtering", expanded=True):
+        st.write("Filter proteins based on coefficient of variation between replicates")
+        
+        enable_cv_filter = st.checkbox(
+            "Enable CV Filtering",
+            value=False,
+            help="Filter proteins based on coefficient of variation (CV) of replicate samples"
+        )
+
+        if enable_cv_filter:
+            cv_cutoff = st.slider(
+                "CV Cutoff (%)",
+                min_value=0,
+                max_value=100,
+                value=20,
+                help="Maximum allowed coefficient of variation between replicates"
+            )
+
+    with st.sidebar.expander("4. Data Preprocessing", expanded=True):
         st.subheader("1. Data Preprocessing")
 
         st.subheader("2. Filtering Options")
