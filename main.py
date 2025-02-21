@@ -381,35 +381,6 @@ if uploaded_files:
                             st.sidebar.write(f"- Conditions: {', '.join(selected_conditions)}")
 
 
-                        # Calculate CV for replicates if enabled
-                        if enable_cv_filter:
-                            try:
-                                logger.info("Starting CV calculation")
-                                logger.info(f"Data shape before CV calculation: {data.shape}")
-
-                                # Get the dataset info for replicate information
-                                dataset_info = st.session_state.dataset_info.get(file.name)
-                                if not dataset_info:
-                                    raise ValueError("Dataset information not found. Please analyze the dataset structure first.")
-
-                                data, cv_stats = dp.calculate_and_filter_cv(
-                                    data,
-                                    cv_cutoff=cv_cutoff,
-                                    dataset_info=dataset_info
-                                )
-
-                                logger.info(f"Data shape after CV calculation: {data.shape}")
-                                logger.info(f"CV stats: {cv_stats}")
-
-                                st.sidebar.write("### CV Filtering Summary")
-                                st.sidebar.write(f"- Proteins passing CV filter: {cv_stats['proteins_passing_cv']}")
-                                st.sidebar.write(f"- Proteins removed by CV: {cv_stats['proteins_removed_cv']}")
-                                st.sidebar.write(f"- Average CV: {cv_stats['average_cv']:.2f}%")
-                            except Exception as e:
-                                logger.error(f"Error in CV calculation: {str(e)}")
-                                st.sidebar.error(f"Error in CV calculation: {str(e)}")
-                                raise e
-
                         # 1. Filter proteins
                         filtered_data, filter_stats = dp.filter_proteins(
                             data,
@@ -426,7 +397,7 @@ if uploaded_files:
 
                         # 3. Normalize data
                         if normalization_method != "none":
-                            processed_data = dp.normalize_data(
+                            normalized_data = dp.normalize_data(
                                 cleaned_data,
                                 method=normalization_method,
                                 center_scale=enable_row_centering,
@@ -434,7 +405,38 @@ if uploaded_files:
                                 quantity_only=True
                             )
                         else:
-                            processed_data = cleaned_data
+                            normalized_data = cleaned_data
+
+                        # 4. Calculate CV for replicates if enabled
+                        if enable_cv_filter:
+                            try:
+                                logger.info("Starting CV calculation")
+                                logger.info(f"Data shape before CV calculation: {normalized_data.shape}")
+
+                                # Get the dataset info for replicate information
+                                dataset_info = st.session_state.dataset_info.get(file.name)
+                                if not dataset_info:
+                                    raise ValueError("Dataset information not found. Please analyze the dataset structure first.")
+
+                                processed_data, cv_stats = dp.calculate_and_filter_cv(
+                                    normalized_data,
+                                    cv_cutoff=cv_cutoff,
+                                    dataset_info=dataset_info
+                                )
+
+                                logger.info(f"Data shape after CV calculation: {processed_data.shape}")
+                                logger.info(f"CV stats: {cv_stats}")
+
+                                st.sidebar.write("### CV Filtering Summary")
+                                st.sidebar.write(f"- Proteins passing CV filter: {cv_stats['proteins_passing_cv']}")
+                                st.sidebar.write(f"- Proteins removed by CV: {cv_stats['proteins_removed_cv']}")
+                                st.sidebar.write(f"- Average CV: {cv_stats['average_cv']:.2f}%")
+                            except Exception as e:
+                                logger.error(f"Error in CV calculation: {str(e)}")
+                                st.sidebar.error(f"Error in CV calculation: {str(e)}")
+                                raise e
+                        else:
+                            processed_data = normalized_data
 
                         # 4. Calculate quality metrics
                         qc_metrics = dp.calculate_quality_metrics(processed_data)
