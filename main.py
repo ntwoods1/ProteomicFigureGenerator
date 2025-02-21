@@ -17,18 +17,31 @@ logger = logging.getLogger(__name__)
 
 def filter_data_by_selection(data, cell_lines, conditions):
     """Filter data based on selected cell lines and conditions."""
+    logger.info(f"Filtering data with {len(cell_lines)} cell lines and {len(conditions)} conditions")
+    logger.info(f"Initial data shape: {data.shape}")
+
     # Create masks for filtering
     cell_line_mask = data.apply(
-        lambda row: any(cl in str(row.name) for cl in cell_lines),
+        lambda row: any(cl.lower() in str(row.name).lower() for cl in cell_lines),
         axis=1
     )
     condition_mask = data.apply(
-        lambda row: any(cond in str(row.name) for cond in conditions),
+        lambda row: any(cond.lower() in str(row.name).lower() for cond in conditions),
         axis=1
     )
 
+    # Log the number of rows matching each filter
+    logger.info(f"Rows matching cell line filter: {cell_line_mask.sum()}")
+    logger.info(f"Rows matching condition filter: {condition_mask.sum()}")
+
     # Apply both filters
-    return data[cell_line_mask & condition_mask]
+    filtered_data = data[cell_line_mask & condition_mask]
+    logger.info(f"Final filtered data shape: {filtered_data.shape}")
+
+    if filtered_data.empty:
+        raise ValueError("Filtering resulted in empty dataset. Please check your selection criteria.")
+
+    return filtered_data
 
 # Configure Streamlit page
 try:
@@ -349,15 +362,32 @@ if uploaded_files:
 
                         # Calculate CV for replicates if enabled
                         if enable_cv_filter:
-                            data, cv_stats = dp.calculate_and_filter_cv(
-                                data,
-                                cv_cutoff=cv_cutoff,
-                                dataset_info=st.session_state.dataset_info.get(file.name, None)
-                            )
-                            st.sidebar.write("### CV Filtering Summary")
-                            st.sidebar.write(f"- Proteins passing CV filter: {cv_stats['proteins_passing_cv']}")
-                            st.sidebar.write(f"- Proteins removed by CV: {cv_stats['proteins_removed_cv']}")
-                            st.sidebar.write(f"- Average CV: {cv_stats['average_cv']:.2f}%")
+                            try:
+                                logger.info("Starting CV calculation")
+                                logger.info(f"Data shape before CV calculation: {data.shape}")
+
+                                # Get the dataset info for replicate information
+                                dataset_info = st.session_state.dataset_info.get(file.name)
+                                if not dataset_info:
+                                    raise ValueError("Dataset information not found. Please analyze the dataset structure first.")
+
+                                data, cv_stats = dp.calculate_and_filter_cv(
+                                    data,
+                                    cv_cutoff=cv_cutoff,
+                                    dataset_info=dataset_info
+                                )
+
+                                logger.info(f"Data shape after CV calculation: {data.shape}")
+                                logger.info(f"CV stats: {cv_stats}")
+
+                                st.sidebar.write("### CV Filtering Summary")
+                                st.sidebar.write(f"- Proteins passing CV filter: {cv_stats['proteins_passing_cv']}")
+                                st.sidebar.write(f"- Proteins removed by CV: {cv_stats['proteins_removed_cv']}")
+                                st.sidebar.write(f"- Average CV: {cv_stats['average_cv']:.2f}%")
+                            except Exception as e:
+                                logger.error(f"Error in CV calculation: {str(e)}")
+                                st.sidebar.error(f"Error in CV calculation: {str(e)}")
+                                raise e
 
                         # 1. Filter proteins
                         filtered_data, filter_stats = dp.filter_proteins(
