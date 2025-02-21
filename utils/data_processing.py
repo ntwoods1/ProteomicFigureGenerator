@@ -87,16 +87,20 @@ def validate_data(df):
     return validation_results
 
 def filter_by_peptide_count(df, min_peptides=1):
-    """Filter proteins based on the number of peptides used for identification."""
+    """
+    Filter proteins based on the number of peptides used for identification.
+    Only keeps proteins that have at least min_peptides in any sample.
+    """
+    # Find all peptide count columns
     peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified")]
 
     if not peptide_cols:
         raise ValueError("No peptide count columns found (ending with 'PG.NrOfStrippedSequencesIdentified')")
 
-    # Get maximum peptide count for each protein across all samples
+    # Calculate maximum peptide count for each protein across all samples
     max_peptides = df[peptide_cols].max(axis=1)
 
-    # Filter based on threshold
+    # Filter proteins based on their maximum peptide count
     mask = max_peptides >= min_peptides
     filtered_df = df[mask].copy()
 
@@ -106,7 +110,9 @@ def filter_by_peptide_count(df, min_peptides=1):
         "proteins_passing_filter": len(filtered_df),
         "proteins_removed": len(df) - len(filtered_df),
         "peptide_threshold": min_peptides,
-        "max_peptides_found": max_peptides.max()
+        "max_peptides_found": max_peptides.max(),
+        "median_peptides": max_peptides.median(),
+        "mean_peptides": max_peptides.mean()
     }
 
     return filtered_df, stats_dict
