@@ -60,6 +60,8 @@ if 'processing_params' not in st.session_state:
     st.session_state.processing_params = {}
 if 'dataset_info' not in st.session_state:
     st.session_state.dataset_info = {}
+if 'analysis_selections' not in st.session_state:
+    st.session_state.analysis_selections = {}
 
 def load_and_preprocess_data(file) -> Dict[str, Any]:
     """Load and preprocess data from Excel/CSV file with proper type handling."""
@@ -113,11 +115,39 @@ if uploaded_files:
                         st.write(f"- Number of conditions: {dataset_info['summary']['num_conditions']}")
                         st.write(f"- Number of quantity columns: {dataset_info['summary']['num_quantity_columns']}")
 
+                        # Add selection options for cell lines and conditions
+                        if 'cell_lines' in dataset_info:
+                            selected_cell_lines = st.multiselect(
+                                "Select Cell Lines to Analyze",
+                                options=dataset_info['cell_lines'],
+                                default=dataset_info['cell_lines'],
+                                key=f"cell_lines_{file.name}"
+                            )
+
+                        if 'conditions' in dataset_info:
+                            selected_conditions = st.multiselect(
+                                "Select Treatment Conditions",
+                                options=dataset_info['conditions'],
+                                default=dataset_info['conditions'],
+                                key=f"conditions_{file.name}"
+                            )
+
+                        # Store selections in session state
+                        st.session_state.analysis_selections[file.name] = {
+                            'cell_lines': selected_cell_lines,
+                            'conditions': selected_conditions
+                        }
+
                         # Store data and analysis results
                         st.session_state.datasets[file.name] = data
                         st.session_state.dataset_info[file.name] = dataset_info
 
                         logger.info(f"Successfully processed and stored dataset info for {file.name}")
+
+                        # Show current selection summary
+                        st.write("### Current Selection")
+                        st.write(f"Selected Cell Lines: {', '.join(selected_cell_lines)}")
+                        st.write(f"Selected Conditions: {', '.join(selected_conditions)}")
 
                     except Exception as e:
                         logger.error(f"Error analyzing dataset structure for {file.name}: {str(e)}")
@@ -273,6 +303,25 @@ if uploaded_files:
                     validation_results = dp.validate_data(data)
 
                     if validation_results["valid"]:
+                        # Get current selections
+                        if file.name in st.session_state.analysis_selections:
+                            selections = st.session_state.analysis_selections[file.name]
+                            selected_cell_lines = selections['cell_lines']
+                            selected_conditions = selections['conditions']
+
+                            # Filter data based on selections
+                            data = filter_data_by_selection(
+                                data,
+                                selected_cell_lines,
+                                selected_conditions
+                            )
+
+                            st.sidebar.write("### Selection Summary")
+                            st.sidebar.write(f"Analyzing data for:")
+                            st.sidebar.write(f"- Cell Lines: {', '.join(selected_cell_lines)}")
+                            st.sidebar.write(f"- Conditions: {', '.join(selected_conditions)}")
+
+
                         # Calculate CV for replicates if enabled
                         if enable_cv_filter:
                             data, cv_stats = dp.calculate_and_filter_cv(
@@ -524,3 +573,18 @@ st.markdown("""
 ---
 Created with ❤️ using Streamlit
 """)
+
+def filter_data_by_selection(data, cell_lines, conditions):
+    """Filter data based on selected cell lines and conditions."""
+    # Create masks for filtering
+    cell_line_mask = data.apply(
+        lambda row: any(cl in str(row.name) for cl in cell_lines),
+        axis=1
+    )
+    condition_mask = data.apply(
+        lambda row: any(cond in str(row.name) for cond in conditions),
+        axis=1
+    )
+
+    # Apply both filters
+    return data[cell_line_mask & condition_mask]
