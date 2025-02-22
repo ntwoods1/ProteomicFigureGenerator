@@ -217,10 +217,10 @@ if uploaded_files:
     # CV Analysis options
     enable_cv_filter = False
     cv_cutoff = None
-    
+
     with st.sidebar.expander("2. Peptide-based Filtering", expanded=True):
         st.write("Filter proteins based on the number of identified peptides")
-        
+
         min_peptides = st.number_input(
             "Minimum number of peptides required",
             min_value=1,
@@ -248,7 +248,7 @@ if uploaded_files:
                             data,
                             min_peptides=min_peptides
                         )
-                        
+
                         # Then apply CV filtering if enabled
                         if enable_cv_filter:
                             dataset_info = st.session_state.dataset_info.get(file.name)
@@ -284,7 +284,7 @@ if uploaded_files:
 
     with st.sidebar.expander("3. CV-based Filtering", expanded=True):
         st.write("Filter proteins based on coefficient of variation between replicates")
-        
+
         cv_cutoff = st.slider(
             "CV Cutoff (%)",
             min_value=0,
@@ -305,21 +305,21 @@ if uploaded_files:
                         # Filter groups for this cell line
                         cell_line_groups = {k: v for k, v in dataset_info["replicates"].items() 
                                          if k.startswith(cell_line)}
-                        
+
                         # Create temporary dataset info for this cell line
                         cell_line_info = {
                             "replicates": cell_line_groups,
                             "cell_lines": [cell_line],
                             "conditions": dataset_info["conditions"]
                         }
-                        
+
                         # Apply CV filtering for this cell line
                         filtered_data, cv_stats = dp.calculate_and_filter_cv(
                             data,
                             cv_cutoff=cv_cutoff,
                             dataset_info=cell_line_info
                         )
-                        
+
                         cell_line_stats[cell_line] = cv_stats
 
                     # Show results for each cell line
@@ -340,7 +340,7 @@ if uploaded_files:
 
                     # Update processed data
                     st.session_state.processed_data[file.name] = filtered_data
-                    
+
                     # Show overall results
                     st.sidebar.write("### Overall Results")
                     st.sidebar.write(f"Total proteins passing filter: {overall_stats['proteins_passing_cv']}")
@@ -679,21 +679,27 @@ if uploaded_files:
                                 # Calculate fold changes and p-values
                                 group1_data = data[group1_cols].mean(axis=1)
                                 group2_data = data[group2_cols].mean(axis=1)
-                                
-                                # Calculate log2 fold change
-                                log2fc = np.log2(group2_data) - np.log2(group1_data)
-                                
+
+                                # Convert to numeric and calculate log2 fold change
+                                group1_data = pd.to_numeric(group1_data, errors='coerce')
+                                group2_data = pd.to_numeric(group2_data, errors='coerce')
+
+                                # Add small constant to avoid log(0)
+                                min_val = min(group1_data.min(), group2_data.min())
+                                offset = min_val * 0.01 if min_val > 0 else 0.01
+                                log2fc = np.log2(group2_data + offset) - np.log2(group1_data + offset)
+
                                 # Calculate p-values using t-test
                                 pvalues = []
                                 for idx in data.index:
-                                    g1_values = data.loc[idx, group1_cols].dropna()
-                                    g2_values = data.loc[idx, group2_cols].dropna()
+                                    g1_values = pd.to_numeric(data.loc[idx, group1_cols], errors='coerce').dropna()
+                                    g2_values = pd.to_numeric(data.loc[idx, group2_cols], errors='coerce').dropna()
                                     if len(g1_values) >= 2 and len(g2_values) >= 2:
                                         _, pval = stats.ttest_ind(g1_values, g2_values)
                                         pvalues.append(pval)
                                     else:
                                         pvalues.append(1.0)
-                                
+
                                 # Create volcano plot data
                                 volcano_data = pd.DataFrame({
                                     'log2FoldChange': log2fc,
@@ -710,10 +716,10 @@ if uploaded_files:
                                     gene_col='Gene',
                                     cutoffs={'p_value': 1.3, 'fold_change': 1.0}
                                 )
-                                
+
                                 # Update title
                                 fig.update_layout(title=f"Volcano Plot: {comparison_name}")
-                                
+
                                 st.plotly_chart(fig, use_container_width=True)
 
                             except Exception as e:
