@@ -704,7 +704,7 @@ if uploaded_files:
                                 volcano_data = pd.DataFrame({
                                     'log2FoldChange': log2fc,
                                     '-log10(p-value)': -np.log10(pvalues),
-                                    'Gene': data.get('Gene Name', data.index),
+                                    'Gene': data.get('PG.Genes', data.index), # Use PG.Genes or fallback
                                     'Description': data.get('Description', '')
                                 })
 
@@ -758,11 +758,13 @@ if uploaded_files:
                     }
 
                     try:
+                        gene_names = data.get('PG.Genes', data.get('Gene Name', data.index)) #get gene names
+
                         fig = viz.create_interactive_volcano(
                             data,
                             x_col,
                             y_col,
-                            "Gene Name" if "Gene Name" in data.columns else None,
+                            gene_names, # use gene names for hover_name
                             cutoffs
                         )
                         st.plotly_chart(fig, use_container_width=True)
