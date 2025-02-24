@@ -30,8 +30,16 @@ if 'processed_data' not in st.session_state:
 if 'cv_results' not in st.session_state:
     st.session_state['cv_results'] = {}
 
-# Title
+# Title and File Upload Section
 st.title("Proteomic Data Analysis")
+
+# File Upload in main area
+st.header("Upload Datasets")
+uploaded_files = st.file_uploader(
+    "Upload one or more datasets (Excel format)",
+    accept_multiple_files=True,
+    type=["xlsx"]
+)
 
 # Data Processing Options in sidebar
 st.sidebar.header("Data Processing Options")
@@ -82,14 +90,6 @@ cv_threshold = st.sidebar.slider(
     max_value=100,
     value=20,
     help="Maximum allowed Coefficient of Variation percentage"
-)
-
-# File Upload
-st.sidebar.header("Upload Datasets")
-uploaded_files = st.sidebar.file_uploader(
-    "Upload one or more datasets (Excel format)",
-    accept_multiple_files=True,
-    type=["xlsx"]
 )
 
 # Function to extract gene names from the Description column
