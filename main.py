@@ -10,6 +10,7 @@ from matplotlib.patches import Ellipse
 import seaborn as sns
 from scipy.stats import ttest_ind
 from scipy.cluster.hierarchy import linkage, dendrogram
+from utils.data_processing import analyze_dataset_structure
 
 # Set page configuration
 st.set_page_config(
@@ -42,6 +43,7 @@ def extract_gene_name(description):
 
 # Placeholder for datasets
 datasets = {}
+dataset_structures = {}  # Store analyzed structure for each dataset
 
 if uploaded_files:
     # Load and store datasets
@@ -52,6 +54,14 @@ if uploaded_files:
                 # Extract gene names
                 data["Gene Name"] = data["Description"].apply(extract_gene_name)
             datasets[uploaded_file.name] = data
+
+            # Analyze dataset structure
+            try:
+                dataset_structures[uploaded_file.name] = analyze_dataset_structure(data)
+                st.success(f"Successfully analyzed structure of {uploaded_file.name}")
+            except Exception as e:
+                st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
+
         except Exception as e:
             st.error(f"Error processing file {uploaded_file.name}: {e}")
 
@@ -68,10 +78,39 @@ if uploaded_files:
 
         if dataset_name:
             selected_data = datasets[dataset_name]
-            st.write("**Preview of the Dataset**")
+
+            # Display dataset structure information
+            if dataset_name in dataset_structures:
+                structure = dataset_structures[dataset_name]
+
+                st.subheader("Dataset Structure")
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.write("**Cell Lines Detected:**")
+                    st.write(", ".join(structure["cell_lines"]) if structure["cell_lines"] else "None detected")
+
+                    st.write("**Conditions/Treatments Detected:**")
+                    st.write(", ".join(structure["conditions"]) if structure["conditions"] else "None detected")
+
+                with col2:
+                    st.write("**Summary Statistics:**")
+                    st.write(f"- Number of Cell Lines: {structure['summary']['num_cell_lines']}")
+                    st.write(f"- Number of Conditions: {structure['summary']['num_conditions']}")
+                    st.write(f"- Number of Quantity Columns: {structure['summary']['num_quantity_columns']}")
+
+                # Display replicate groups
+                st.subheader("Replicate Groups")
+                for group, replicate_cols in structure["replicates"].items():
+                    with st.expander(f"Group: {group}"):
+                        st.write("Replicate columns:")
+                        for col in replicate_cols:
+                            st.write(f"- {col}")
+
+            st.subheader("Data Preview")
             st.dataframe(selected_data.head(10))
 
-            st.write("**Basic Statistics**")
+            st.subheader("Basic Statistics")
             st.write(selected_data.describe())
 
     # Volcano Plot Tab
