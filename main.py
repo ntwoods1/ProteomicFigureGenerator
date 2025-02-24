@@ -1,98 +1,69 @@
-import os
-import sys
+import streamlit as st
+import pandas as pd
 import logging
-import traceback
 
-# Configure logging
+# Configure basic logging (improved from edited code)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(message)s'
 )
+
 logger = logging.getLogger(__name__)
 
 try:
-    import streamlit as st
-    import pandas as pd
-    import numpy as np
-    from utils import data_processing as dp
+    logger.info("Starting Streamlit application")
 
-    # Log successful imports
-    logger.info("All required packages imported successfully")
-
-except Exception as e:
-    logger.error(f"Error during imports: {str(e)}")
-    logger.error(traceback.format_exc())
-    sys.exit(1)
-
-try:
-    # Configure Streamlit page
+    # Configure the page (retaining original configuration)
     st.set_page_config(
-        page_title="Proteomics Data Analysis",
+        page_title="Proteomics Analysis",
         page_icon="🧬",
         layout="wide"
     )
+    logger.info("Page configuration set")
 
-    # Title and introduction
-    st.title("🧬 Proteomics Data Analysis Platform")
-    st.markdown("""
-    This platform provides comprehensive tools for proteomics data analysis, including:
-    - Data validation and preprocessing
-    - Statistical analysis
-    - Interactive visualizations
-    - Publication-ready figure export
-    """)
+    # Title (simplified from edited code)
+    st.title("Proteomics Data Analysis")
+    st.write("Upload your proteomics data file to begin analysis.")
 
-    # Initialize session state
-    if 'datasets' not in st.session_state:
-        st.session_state.datasets = {}
-    if 'dataset_info' not in st.session_state:
-        st.session_state.dataset_info = {}
+    # File uploader (simplified from edited code)
+    file = st.file_uploader("Choose a file", type=['xlsx', 'csv'])
 
-    # File Upload Section
-    uploaded_files = st.sidebar.file_uploader(
-        "Upload one or more datasets (Excel format)",
-        accept_multiple_files=True,
-        type=["xlsx", "csv"]
-    )
-
-    if uploaded_files:
+    if file is not None:
         try:
-            # Load and store datasets
-            for uploaded_file in uploaded_files:
-                try:
-                    if uploaded_file.name.endswith('.csv'):
-                        data = pd.read_csv(uploaded_file)
-                    else:
-                        data = pd.read_excel(uploaded_file)
+            logger.info(f"Processing file: {file.name}")
 
-                    # Store raw data
-                    st.session_state.datasets[uploaded_file.name] = data
+            # Read the file (retaining original code's handling of .csv and .xlsx)
+            if file.name.endswith('.csv'):
+                df = pd.read_csv(file)
+            else:
+                df = pd.read_excel(file)
 
-                    # Show basic data preview
-                    st.write(f"### Dataset: {uploaded_file.name}")
-                    st.write("#### Preview")
-                    st.dataframe(data.head())
+            # Display basic info (simplified from edited code)
+            st.write("### Data Preview")
+            st.dataframe(df.head())
 
-                    # Show basic statistics
-                    st.write("#### Basic Statistics")
-                    st.write(f"Number of rows: {len(data)}")
-                    st.write(f"Number of columns: {len(data.columns)}")
+            st.write("### Basic Statistics")
+            st.write(f"Number of rows: {len(df)}")
+            st.write(f"Number of columns: {len(df.columns)}")
+            #Show column names
+            st.write("#### Columns")
+            st.write(df.columns.tolist())
 
-                    logger.info(f"Successfully loaded dataset: {uploaded_file.name}")
 
-                except Exception as e:
-                    logger.error(f"Error loading {uploaded_file.name}: {str(e)}")
-                    st.error(f"Error loading {uploaded_file.name}: {str(e)}")
-                    continue
+            logger.info("File processed successfully")
 
         except Exception as e:
-            logger.error(f"Error processing files: {str(e)}")
-            st.error(f"Error processing files: {str(e)}")
+            logger.error(f"Error processing file: {str(e)}")
+            st.error(f"Error processing file: {str(e)}")
 
     else:
-        st.info("Please upload one or more datasets to get started.")
+        st.info("Please upload a file to begin.")
+
+    logger.info("Application running")
 
 except Exception as e:
     st.error(f"Application error: {str(e)}")
     logger.error(f"Application error: {str(e)}")
+    #Retaining original more detailed error logging.
+    import traceback
     logger.error(traceback.format_exc())
