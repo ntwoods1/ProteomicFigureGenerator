@@ -40,8 +40,8 @@ st.sidebar.header("Data Processing Options")
 st.sidebar.subheader("Missing Values")
 missing_values_method = st.sidebar.selectbox(
     "How to handle missing values?",
-    options=["constant", "mean", "median", "knn", "half_min"],
-    help="Method to handle missing values in the dataset. 'half_min' uses 1/2 of the row minimum value."
+    options=["none", "constant", "mean", "median", "knn", "half_min"],
+    help="Method to handle missing values in the dataset. Only applies to PG.Quantity columns."
 )
 
 min_valid_values = st.sidebar.slider(
@@ -49,7 +49,7 @@ min_valid_values = st.sidebar.slider(
     min_value=0,
     max_value=100,
     value=50,
-    help="Filter out proteins with too many missing values"
+    help="Filter out proteins with too many missing values in PG.Quantity columns"
 )
 
 # Normalization Options
@@ -156,28 +156,35 @@ if uploaded_files:
                 continue
 
             # Process data
-            numeric_cols = data.select_dtypes(include=[np.number]).columns
             filtered_data = data.copy()
 
-            # Handle missing values
-            status_container.text("Handling missing values...")
-            if missing_values_method == "half_min":
-                chunk_size = 1000  # Increased chunk size for better performance
-                for start_idx, end_idx in process_data_chunk(filtered_data, numeric_cols, chunk_size):
-                    chunk = filtered_data.iloc[start_idx:end_idx]
-                    for idx in chunk.index:
-                        row_data = filtered_data.loc[idx, numeric_cols]
-                        if not row_data.isnull().all():
-                            min_val = row_data.min()
-                            filtered_data.loc[idx, numeric_cols] = row_data.fillna(min_val / 2)
-                    progress = 40 + (start_idx // chunk_size) * 2
-                    progress_bar.progress(min(60, progress))
-            else:
-                filtered_data = handle_missing_values(
-                    data,
-                    method=missing_values_method,
-                    min_valid_values=min_valid_values/100
-                )
+            # Get only PG.Quantity columns for missing value handling
+            quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+
+            # Handle missing values only if method is not "none"
+            if missing_values_method != "none" and quantity_cols:
+                status_container.text("Handling missing values in quantity columns...")
+                if missing_values_method == "half_min":
+                    chunk_size = 1000
+                    for start_idx, end_idx in process_data_chunk(filtered_data, quantity_cols, chunk_size):
+                        chunk = filtered_data.iloc[start_idx:end_idx]
+                        for idx in chunk.index:
+                            row_data = filtered_data.loc[idx, quantity_cols]
+                            if not row_data.isnull().all():
+                                min_val = row_data.min()
+                                filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
+                        progress = 40 + (start_idx // chunk_size) * 2
+                        progress_bar.progress(min(60, progress))
+                else:
+                    # Only process quantity columns with existing function
+                    quantity_data = handle_missing_values(
+                        filtered_data[quantity_cols],
+                        method=missing_values_method,
+                        min_valid_values=min_valid_values/100
+                    )
+                    # Update only quantity columns in filtered data
+                    filtered_data[quantity_cols] = quantity_data
+
             progress_bar.progress(70)
 
             # Apply normalization
@@ -188,7 +195,8 @@ if uploaded_files:
                         filtered_data,
                         method=normalization_method,
                         center_scale=apply_centering,
-                        center_method=center_method if apply_centering else None
+                        center_method=center_method if apply_centering else None,
+                        quantity_only=True
                     )
                 else:
                     normalized_data = filtered_data.copy()
@@ -283,7 +291,7 @@ if uploaded_files:
                                 labels={'value': 'CV%', 'count': 'Number of Proteins'}
                             )
                             fig.add_vline(x=cv_threshold, line_dash="dash", line_color="red",
-                                        annotation_text=f"CV threshold ({cv_threshold}%)")
+                                            annotation_text=f"CV threshold ({cv_threshold}%)")
                             st.plotly_chart(fig)
 
                 # Display filtering summary
