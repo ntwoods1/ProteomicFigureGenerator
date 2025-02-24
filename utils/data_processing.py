@@ -369,6 +369,7 @@ def calculate_cv_table(df, dataset_info=None):
             std = group_data.std(axis=1, ddof=1)  # Using ddof=1 for sample standard deviation
             cv = (std / mean.replace(0, np.nan)) * 100  # Avoid division by zero
 
+            # Store results for this group
             cv_results[f"CV_{group}"] = cv
             cv_results[f"Mean_{group}"] = mean
             cv_results[f"StdDev_{group}"] = std
