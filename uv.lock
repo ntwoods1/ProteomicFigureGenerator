@@ -1540,7 +1540,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.15.2" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "statsmodels", specifier = ">=0.14.4" },
-    { name = "streamlit", specifier = ">=1.42.2" },
+    { name = "streamlit", specifier = ">=1.32.0" },
     { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "twilio", specifier = ">=9.4.6" },
     { name = "upsetplot", specifier = ">=0.9.0" },
