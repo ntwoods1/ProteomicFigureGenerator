@@ -24,16 +24,12 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize session state for data caching
+if 'processed_data' not in st.session_state:
+    st.session_state['processed_data'] = {}
+
 # Title
 st.title("Proteomic Data Analysis")
-
-# Sidebar Configuration
-st.sidebar.header("Upload Datasets")
-uploaded_files = st.sidebar.file_uploader(
-    "Upload one or more datasets (Excel format)",
-    accept_multiple_files=True,
-    type=["xlsx"]
-)
 
 # Data Processing Options in sidebar
 st.sidebar.header("Data Processing Options")
@@ -86,6 +82,14 @@ cv_threshold = st.sidebar.slider(
     help="Maximum allowed Coefficient of Variation percentage"
 )
 
+# File Upload
+st.sidebar.header("Upload Datasets")
+uploaded_files = st.sidebar.file_uploader(
+    "Upload one or more datasets (Excel format)",
+    accept_multiple_files=True,
+    type=["xlsx"]
+)
+
 # Function to extract gene names from the Description column
 def extract_gene_name(description):
     if pd.isna(description):
@@ -97,70 +101,119 @@ def extract_gene_name(description):
             return None
     return None
 
+# Function to create cache key
+def get_cache_key(file_name, processing_params):
+    return f"{file_name}_{processing_params['missing_method']}_{processing_params['min_valid']}_{processing_params['norm_method']}_{processing_params['center']}_{processing_params['center_method']}"
+
 # Placeholder for datasets
 datasets = {}
 dataset_structures = {}
-filtered_datasets = {}
-normalized_datasets = {}
 
 if uploaded_files:
-    # Load and store datasets
+    # Process each uploaded file
     for uploaded_file in uploaded_files:
         try:
+            # Create a processing status container
+            status_container = st.empty()
+            progress_bar = st.progress(0)
+
+            status_container.text(f"Reading {uploaded_file.name}...")
             data = pd.read_excel(uploaded_file)
+            progress_bar.progress(20)
+
             if "Description" in data.columns:
+                status_container.text("Extracting gene names...")
                 data["Gene Name"] = data["Description"].apply(extract_gene_name)
+            progress_bar.progress(30)
 
-            # Store original dataset
-            datasets[uploaded_file.name] = data
+            # Create cache key for current processing parameters
+            processing_params = {
+                'missing_method': missing_values_method,
+                'min_valid': min_valid_values,
+                'norm_method': normalization_method,
+                'center': apply_centering if normalization_method != "none" else False,
+                'center_method': center_method if normalization_method != "none" and apply_centering else "none"
+            }
+            cache_key = get_cache_key(uploaded_file.name, processing_params)
 
-            # Handle missing values with the new half_min option
-            if missing_values_method == "half_min":
-                # Get numeric columns
-                numeric_cols = data.select_dtypes(include=[np.number]).columns
-                filtered_data = data.copy()
-
-                # For each row, calculate half of minimum value and fill NaNs
-                for idx in filtered_data.index:
-                    row_data = filtered_data.loc[idx, numeric_cols]
-                    if not row_data.isnull().all():  # If row has some valid values
-                        min_val = row_data.min()
-                        filtered_data.loc[idx, numeric_cols] = row_data.fillna(min_val / 2)
-
-                # Filter based on minimum valid values requirement
-                valid_counts = filtered_data[numeric_cols].notna().sum(axis=1)
-                filtered_data = filtered_data[valid_counts >= (len(numeric_cols) * min_valid_values/100)]
+            # Check if we have cached results
+            if cache_key in st.session_state['processed_data']:
+                status_container.text("Using cached processed data...")
+                processed_data = st.session_state['processed_data'][cache_key]
+                progress_bar.progress(100)
             else:
-                # Use existing handle_missing_values function for other methods
-                filtered_data = handle_missing_values(
-                    data,
-                    method=missing_values_method,
-                    min_valid_values=min_valid_values/100
-                )
+                # Handle missing values
+                status_container.text("Handling missing values...")
+                if missing_values_method == "half_min":
+                    numeric_cols = data.select_dtypes(include=[np.number]).columns
+                    filtered_data = data.copy()
 
-            # Apply normalization if selected
-            if normalization_method != "none":
-                normalized_data = normalize_data(
-                    filtered_data,
-                    method=normalization_method,
-                    center_scale=apply_centering,
-                    center_method=center_method if apply_centering else None
-                )
-            else:
-                normalized_data = filtered_data.copy()
+                    # Process in chunks for better performance
+                    chunk_size = max(1, len(filtered_data) // 10)
+                    for i in range(0, len(filtered_data), chunk_size):
+                        chunk = filtered_data.iloc[i:i+chunk_size]
+                        for idx in chunk.index:
+                            row_data = filtered_data.loc[idx, numeric_cols]
+                            if not row_data.isnull().all():
+                                min_val = row_data.min()
+                                filtered_data.loc[idx, numeric_cols] = row_data.fillna(min_val / 2)
+                        progress = 40 + (i // chunk_size) * 2
+                        progress_bar.progress(min(60, progress))
 
-            filtered_datasets[uploaded_file.name] = filtered_data
-            normalized_datasets[uploaded_file.name] = normalized_data
+                    valid_counts = filtered_data[numeric_cols].notna().sum(axis=1)
+                    filtered_data = filtered_data[valid_counts >= (len(numeric_cols) * min_valid_values/100)]
+                else:
+                    filtered_data = handle_missing_values(
+                        data,
+                        method=missing_values_method,
+                        min_valid_values=min_valid_values/100
+                    )
+                progress_bar.progress(60)
 
-            # Analyze dataset structure using normalized data
-            try:
-                dataset_structures[uploaded_file.name] = analyze_dataset_structure(normalized_data)
-                st.success(f"Successfully analyzed structure of {uploaded_file.name}")
-            except Exception as e:
-                st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
+                # Apply normalization
+                status_container.text("Applying normalization...")
+                if normalization_method != "none":
+                    try:
+                        normalized_data = normalize_data(
+                            filtered_data,
+                            method=normalization_method,
+                            center_scale=apply_centering,
+                            center_method=center_method if apply_centering else None
+                        )
+                    except Exception as e:
+                        st.error(f"Error during normalization: {str(e)}")
+                        normalized_data = filtered_data.copy()
+                else:
+                    normalized_data = filtered_data.copy()
+                progress_bar.progress(80)
+
+                # Analyze dataset structure
+                status_container.text("Analyzing dataset structure...")
+                try:
+                    structure = analyze_dataset_structure(normalized_data)
+                    dataset_structures[uploaded_file.name] = structure
+                except Exception as e:
+                    st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
+                progress_bar.progress(90)
+
+                # Cache the processed data
+                processed_data = {
+                    'original': data,
+                    'filtered': filtered_data,
+                    'normalized': normalized_data
+                }
+                st.session_state['processed_data'][cache_key] = processed_data
+                progress_bar.progress(100)
+
+            # Store the processed data
+            datasets[uploaded_file.name] = processed_data
+            status_container.empty()
+            progress_bar.empty()
+            st.success(f"Successfully processed {uploaded_file.name}")
 
         except Exception as e:
             st.error(f"Error processing file {uploaded_file.name}: {e}")
+            continue
 
     # Tabs for different functionalities
     tab1, tab2, tab3, tab4 = st.tabs(["Data Overview", "Volcano Plot", "PCA", "Heat Map"])
@@ -174,8 +227,8 @@ if uploaded_files:
         )
 
         if dataset_name:
-            selected_data = normalized_datasets[dataset_name]
-            original_data = datasets[dataset_name]
+            selected_data = datasets[dataset_name]['normalized']
+            original_data = datasets[dataset_name]['original']
 
             # Display dataset structure information
             if dataset_name in dataset_structures:
@@ -255,7 +308,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            selected_data = normalized_datasets[dataset_name]
+            selected_data = datasets[dataset_name]['normalized']
             # Column selection for volcano plot
             columns = selected_data.columns
             log2fc_col = st.selectbox("Select Log2 Fold Change Column", options=["Select a column"] + list(columns))
@@ -305,7 +358,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            data = normalized_datasets[dataset_name]
+            data = datasets[dataset_name]['normalized']
             numeric_cols = data.select_dtypes(include=[np.number]).columns
 
             selected_columns = st.multiselect(
@@ -351,7 +404,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            data = normalized_datasets[dataset_name]
+            data = datasets[dataset_name]['normalized']
             numeric_cols = data.select_dtypes(include=[np.number]).columns
 
             selected_columns = st.multiselect(
