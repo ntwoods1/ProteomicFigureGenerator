@@ -15,7 +15,7 @@ from utils.data_processing import (
     calculate_cv_table, 
     handle_missing_values,
     normalize_data,
-    filter_by_peptide_count  # Add this import
+    filter_by_peptide_count  
 )
 
 # Set page configuration
@@ -63,6 +63,12 @@ min_valid_values = st.sidebar.slider(
     max_value=100,
     value=50,
     help="Filter out proteins with too many missing values in PG.Quantity columns"
+)
+
+filter_by_group = st.sidebar.checkbox(
+    "Apply valid values filter within each replicate group",
+    value=False,
+    help="If checked, the valid values filter will be applied separately to each group of replicates"
 )
 
 # 2. CV Threshold
@@ -153,7 +159,8 @@ if uploaded_files:
                 'norm_method': normalization_method,
                 'center': apply_centering if normalization_method != "none" else False,
                 'center_method': center_method if normalization_method != "none" and apply_centering else "none",
-                'min_peptides': min_peptides
+                'min_peptides': min_peptides,
+                'filter_by_group': filter_by_group
             }
             cache_key = get_cache_key(uploaded_file.name, processing_params)
 
@@ -195,15 +202,33 @@ if uploaded_files:
 
             # 3. Apply valid values filter (only on PG.Quantity columns)
             status_container.text("Applying valid values filter to quantitative columns...")
-            valid_counts = peptide_filtered_data[quantity_cols].notna().sum(axis=1)
-            valid_mask = valid_counts >= (len(quantity_cols) * min_valid_values/100)
-            filtered_data = peptide_filtered_data[valid_mask].copy()
+            if filter_by_group:
+                filtered_data = handle_missing_values(
+                    peptide_filtered_data,
+                    method="none",  # We're just filtering here, not imputing
+                    min_valid_values=min_valid_values/100,
+                    by_group=True,
+                    replicate_groups=structure["replicates"]
+                )
+            else:
+                # Global filtering across all quantity columns
+                valid_counts = peptide_filtered_data[quantity_cols].notna().sum(axis=1)
+                valid_mask = valid_counts >= (len(quantity_cols) * min_valid_values/100)
+                filtered_data = peptide_filtered_data[valid_mask].copy()
+
             progress_bar.progress(50)
 
-            # Add filtering statistics
+            # Add filtering statistics with more detail
             n_after_peptide = len(peptide_filtered_data)
             n_after_valid = len(filtered_data)
-            st.write(f"Valid values filter: {n_after_peptide - n_after_valid} proteins removed")
+            st.write("Valid values filter statistics:")
+            st.write(f"- Proteins before filter: {n_after_peptide}")
+            st.write(f"- Proteins after filter: {n_after_valid}")
+            st.write(f"- Proteins removed: {n_after_peptide - n_after_valid}")
+            if filter_by_group:
+                st.write("(Filtering applied within each replicate group)")
+            else:
+                st.write(f"(Global filtering across all {len(quantity_cols)} quantity columns)")
 
 
             # 4. Apply CV threshold filter

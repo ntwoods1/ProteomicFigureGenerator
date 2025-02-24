@@ -247,27 +247,57 @@ def normalize_data(df, method="log2", center_scale=True, center_method="zscore",
 
     return df_norm
 
-def handle_missing_values(df, method="knn", min_valid_values=0.5):
-    """Handle missing values using specified method."""
+def handle_missing_values(df, method="none", min_valid_values=0.5, by_group=False, replicate_groups=None):
+    """Handle missing values using specified method.
+
+    Args:
+        df: Input DataFrame
+        method: Method to handle missing values ('none', 'constant', 'mean', 'median', 'knn', 'half_min')
+        min_valid_values: Minimum fraction of valid values required (0-1)
+        by_group: If True, apply filtering within each replicate group
+        replicate_groups: Dictionary of replicate groups from analyze_dataset_structure
+    """
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df_clean = df.copy()
 
-    # Remove rows with too many missing values
-    valid_counts = df_clean[numeric_cols].notna().sum(axis=1)
-    df_clean = df_clean[valid_counts >= (len(numeric_cols) * min_valid_values)]
+    if by_group and replicate_groups:
+        # Apply filtering within each group
+        valid_mask = pd.Series(True, index=df.index)
+        for group, cols in replicate_groups.items():
+            # Only consider PG.Quantity columns
+            quantity_cols = [col for col in cols if col.endswith("PG.Quantity")]
+            if quantity_cols:
+                group_valid_counts = df[quantity_cols].notna().sum(axis=1)
+                group_mask = group_valid_counts >= (len(quantity_cols) * min_valid_values)
+                valid_mask &= group_mask
+        df_clean = df_clean[valid_mask]
+    else:
+        # Global filtering across all PG.Quantity columns
+        quantity_cols = [col for col in numeric_cols if col.endswith("PG.Quantity")]
+        if quantity_cols:
+            valid_counts = df_clean[quantity_cols].notna().sum(axis=1)
+            df_clean = df_clean[valid_counts >= (len(quantity_cols) * min_valid_values)]
+
+    if method == "none" or df_clean.empty:
+        return df_clean
+
+    # Apply imputation only on PG.Quantity columns
+    quantity_cols = [col for col in df_clean.columns if col.endswith("PG.Quantity")]
+    if not quantity_cols:
+        return df_clean
 
     if method == "knn":
         imputer = KNNImputer(n_neighbors=3)
-        df_clean[numeric_cols] = imputer.fit_transform(df_clean[numeric_cols])
+        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
     elif method == "mean":
         imputer = SimpleImputer(strategy="mean")
-        df_clean[numeric_cols] = imputer.fit_transform(df_clean[numeric_cols])
+        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
     elif method == "median":
         imputer = SimpleImputer(strategy="median")
-        df_clean[numeric_cols] = imputer.fit_transform(df_clean[numeric_cols])
+        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
     elif method == "constant":
         imputer = SimpleImputer(strategy="constant", fill_value=0)
-        df_clean[numeric_cols] = imputer.fit_transform(df_clean[numeric_cols])
+        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
 
     return df_clean
 
