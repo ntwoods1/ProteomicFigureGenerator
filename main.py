@@ -14,7 +14,8 @@ from utils.data_processing import (
     analyze_dataset_structure, 
     calculate_cv_table, 
     handle_missing_values,
-    normalize_data
+    normalize_data,
+    filter_by_peptide_count  # Add this import
 )
 
 # Set page configuration
@@ -44,8 +45,18 @@ uploaded_files = st.file_uploader(
 # Data Processing Options in sidebar - Reordered according to processing pipeline
 st.sidebar.header("Data Processing Pipeline")
 
-# 1. Valid Values Filter
-st.sidebar.subheader("1. Valid Values Filter")
+# 1. Peptide Count Filter
+st.sidebar.subheader("1. Peptide Count Filter")
+min_peptides = st.sidebar.number_input(
+    "Minimum number of peptides required",
+    min_value=1,
+    max_value=10,
+    value=2,
+    help="Filter out proteins identified by fewer peptides than this threshold"
+)
+
+# 2. Valid Values Filter
+st.sidebar.subheader("2. Valid Values Filter")
 min_valid_values = st.sidebar.slider(
     "Minimum % of valid values required",
     min_value=0,
@@ -141,7 +152,8 @@ if uploaded_files:
                 'missing_method': missing_values_method,
                 'norm_method': normalization_method,
                 'center': apply_centering if normalization_method != "none" else False,
-                'center_method': center_method if normalization_method != "none" and apply_centering else "none"
+                'center_method': center_method if normalization_method != "none" and apply_centering else "none",
+                'min_peptides': min_peptides
             }
             cache_key = get_cache_key(uploaded_file.name, processing_params)
 
@@ -160,30 +172,41 @@ if uploaded_files:
 
             processed_data = {
                 'original': data.copy(),
+                'peptide_filtered': None,
                 'cv_filtered': None,
                 'missing_handled': None,
                 'normalized': None
             }
 
-            # 1. Calculate CV on original data
-            status_container.text("Calculating CV on original data...")
-            structure = analyze_dataset_structure(data)
-            cv_results = calculate_cv_table(data, structure)
+            # 1. Filter by peptide count
+            status_container.text("Filtering by peptide count...")
+            peptide_filtered_data, peptide_stats = filter_by_peptide_count(data, min_peptides=min_peptides)
+            processed_data['peptide_filtered'] = peptide_filtered_data
+            progress_bar.progress(30)
 
-            # 2. Apply valid values filter (only on PG.Quantity columns)
+            # Add peptide filtering statistics
+            st.write(f"Peptide count filter: {peptide_stats['proteins_removed']} proteins removed")
+
+            # 2. Calculate CV on peptide-filtered data
+            status_container.text("Calculating CV on filtered data...")
+            structure = analyze_dataset_structure(peptide_filtered_data)
+            cv_results = calculate_cv_table(peptide_filtered_data, structure)
+            progress_bar.progress(40)
+
+            # 3. Apply valid values filter (only on PG.Quantity columns)
             status_container.text("Applying valid values filter to quantitative columns...")
-            valid_counts = data[quantity_cols].notna().sum(axis=1)
+            valid_counts = peptide_filtered_data[quantity_cols].notna().sum(axis=1)
             valid_mask = valid_counts >= (len(quantity_cols) * min_valid_values/100)
-            filtered_data = data[valid_mask].copy()
+            filtered_data = peptide_filtered_data[valid_mask].copy()
             progress_bar.progress(50)
 
             # Add filtering statistics
-            n_original = len(data)
+            n_after_peptide = len(peptide_filtered_data)
             n_after_valid = len(filtered_data)
-            st.write(f"Valid values filter: {n_original - n_after_valid} proteins removed")
+            st.write(f"Valid values filter: {n_after_peptide - n_after_valid} proteins removed")
 
 
-            # 3. Apply CV threshold filter
+            # 4. Apply CV threshold filter
             status_container.text("Applying CV threshold filter...")
             cv_mask = pd.Series(True, index=filtered_data.index)
             for group in structure["replicates"].keys():
@@ -264,6 +287,7 @@ if uploaded_files:
         if dataset_name:
             processed_data = datasets[dataset_name]
             original_data = processed_data['original']
+            peptide_filtered_data = processed_data['peptide_filtered']
             filtered_data = processed_data['cv_filtered']
             final_data = processed_data['normalized']
 
@@ -314,6 +338,7 @@ if uploaded_files:
                 # Display filtering summary
                 st.subheader("Filtering Summary")
                 st.write(f"- Original number of proteins: {len(original_data)}")
+                st.write(f"- Proteins after peptide filter: {len(peptide_filtered_data)}")
                 st.write(f"- Proteins after valid values filter: {len(filtered_data)}")
                 st.write(f"- Proteins in final dataset: {len(final_data)}")
 
