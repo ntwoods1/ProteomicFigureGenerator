@@ -9,7 +9,7 @@ deploymentTarget = "autoscale"
 run = ["sh", "-c", "streamlit run main.py"]
 
 [workflows]
-runButton = "Project"
+runButton = "Flask Server"
 
 [[workflows.workflow]]
 name = "Project"
