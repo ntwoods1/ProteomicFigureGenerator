@@ -239,28 +239,28 @@ if uploaded_files:
                 if not group_cv.empty:
                     cv_mask &= (group_cv <= cv_threshold).all(axis=1)
 
-            filtered_data = filtered_data[cv_mask].copy()
-            processed_data['cv_filtered'] = filtered_data.copy()
+            final_filtered_data = filtered_data[cv_mask].copy()
+            processed_data['cv_filtered'] = final_filtered_data.copy()
             progress_bar.progress(70)
 
             # 4. Handle missing values if method is not "none"
             if missing_values_method != "none" and quantity_cols:
                 status_container.text("Handling missing values...")
                 if missing_values_method == "half_min":
-                    for idx in filtered_data.index:
-                        row_data = filtered_data.loc[idx, quantity_cols]
+                    for idx in final_filtered_data.index:
+                        row_data = final_filtered_data.loc[idx, quantity_cols]
                         if not row_data.isnull().all():
                             min_val = row_data.min()
-                            filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
+                            final_filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
                 else:
                     quantity_data = handle_missing_values(
-                        filtered_data[quantity_cols],
+                        final_filtered_data[quantity_cols],
                         method=missing_values_method,
                         min_valid_values=min_valid_values/100
                     )
-                    filtered_data[quantity_cols] = quantity_data
+                    final_filtered_data[quantity_cols] = quantity_data
 
-            processed_data['missing_handled'] = filtered_data.copy()
+            processed_data['missing_handled'] = final_filtered_data.copy()
             progress_bar.progress(85)
 
             # 5. Apply normalization if selected
@@ -268,7 +268,7 @@ if uploaded_files:
             if normalization_method != "none":
                 try:
                     normalized_data = normalize_data(
-                        filtered_data,
+                        final_filtered_data,
                         method=normalization_method,
                         center_scale=apply_centering,
                         center_method=center_method if apply_centering else None,
@@ -276,14 +276,37 @@ if uploaded_files:
                     )
                 except Exception as e:
                     st.error(f"Error during normalization: {str(e)}")
-                    normalized_data = filtered_data.copy()
+                    normalized_data = final_filtered_data.copy()
             else:
-                normalized_data = filtered_data.copy()
+                normalized_data = final_filtered_data.copy()
 
             processed_data['normalized'] = normalized_data
             progress_bar.progress(95)
 
             # Store the processed data
+            processed_data = {
+                'original': data.copy(),
+                'peptide_filtered': peptide_filtered_data,
+                'valid_filtered': filtered_data,
+                'cv_filtered': final_filtered_data,
+                'normalized': normalized_data,
+                'stats': {
+                    'original_count': len(data),
+                    'peptide_filtered_count': len(peptide_filtered_data),
+                    'valid_filtered_count': len(filtered_data),
+                    'cv_filtered_count': len(final_filtered_data),
+                    'final_count': len(normalized_data),
+                    'peptide_stats': peptide_stats,
+                    'filter_params': {
+                        'min_peptides': min_peptides,
+                        'min_valid_values': min_valid_values,
+                        'filter_by_group': filter_by_group,
+                        'cv_threshold': cv_threshold
+                    }
+                }
+            }
+
+
             datasets[uploaded_file.name] = processed_data
             dataset_structures[uploaded_file.name] = structure
             st.session_state['processed_data'][cache_key] = processed_data
@@ -313,12 +336,14 @@ if uploaded_files:
             processed_data = datasets[dataset_name]
             original_data = processed_data['original']
             peptide_filtered_data = processed_data['peptide_filtered']
-            filtered_data = processed_data['cv_filtered']
+            filtered_data = processed_data['valid_filtered']
+            final_filtered_data = processed_data['cv_filtered']
             final_data = processed_data['normalized']
 
             if dataset_name in dataset_structures:
                 structure = dataset_structures[dataset_name]
                 cv_results = st.session_state['cv_results'][dataset_name]
+                stats = datasets[dataset_name]['stats']
 
                 st.subheader("Dataset Structure")
                 col1, col2 = st.columns(2)
@@ -362,10 +387,32 @@ if uploaded_files:
 
                 # Display filtering summary
                 st.subheader("Filtering Summary")
-                st.write(f"- Original number of proteins: {len(original_data)}")
-                st.write(f"- Proteins after peptide filter: {len(peptide_filtered_data)}")
-                st.write(f"- Proteins after valid values filter: {len(filtered_data)}")
-                st.write(f"- Proteins in final dataset: {len(final_data)}")
+                st.write(f"- Original number of proteins: {stats['original_count']}")
+                st.write(f"- Proteins after peptide filter (min. {stats['filter_params']['min_peptides']} peptides): {stats['peptide_filtered_count']}")
+
+                if stats['filter_params']['filter_by_group']:
+                    st.write(f"- Proteins after valid values filter ({stats['filter_params']['min_valid_values']}% within each group): {stats['valid_filtered_count']}")
+                else:
+                    st.write(f"- Proteins after valid values filter ({stats['filter_params']['min_valid_values']}% across all columns): {stats['valid_filtered_count']}")
+
+                st.write(f"- Proteins after CV filter (CV ≤ {stats['filter_params']['cv_threshold']}%): {stats['cv_filtered_count']}")
+                st.write(f"- Final number of proteins: {stats['final_count']}")
+
+                # Add detailed filtering statistics in expandable sections
+                with st.expander("Detailed Filtering Statistics"):
+                    st.write("**Peptide Filter Details**")
+                    st.write(f"- Proteins removed: {stats['original_count'] - stats['peptide_filtered_count']}")
+
+                    st.write("\n**Valid Values Filter Details**")
+                    st.write(f"- Proteins removed: {stats['peptide_filtered_count'] - stats['valid_filtered_count']}")
+                    if stats['filter_params']['filter_by_group']:
+                        st.write("- Filter applied within each replicate group")
+                    else:
+                        st.write(f"- Filter applied across all {len(quantity_cols)} quantity columns")
+
+                    st.write("\n**CV Filter Details**")
+                    st.write(f"- Proteins removed: {stats['valid_filtered_count'] - stats['cv_filtered_count']}")
+
 
                 # Display replicate groups
                 st.subheader("Replicate Groups")
