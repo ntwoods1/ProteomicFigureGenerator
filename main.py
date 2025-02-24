@@ -41,17 +41,11 @@ uploaded_files = st.file_uploader(
     type=["xlsx"]
 )
 
-# Data Processing Options in sidebar
-st.sidebar.header("Data Processing Options")
+# Data Processing Options in sidebar - Reordered according to processing pipeline
+st.sidebar.header("Data Processing Pipeline")
 
-# Missing Values Handling
-st.sidebar.subheader("Missing Values")
-missing_values_method = st.sidebar.selectbox(
-    "How to handle missing values?",
-    options=["none", "constant", "mean", "median", "knn", "half_min"],
-    help="Method to handle missing values in the dataset. Only applies to PG.Quantity columns."
-)
-
+# 1. Valid Values Filter
+st.sidebar.subheader("1. Valid Values Filter")
 min_valid_values = st.sidebar.slider(
     "Minimum % of valid values required",
     min_value=0,
@@ -60,8 +54,26 @@ min_valid_values = st.sidebar.slider(
     help="Filter out proteins with too many missing values in PG.Quantity columns"
 )
 
-# Normalization Options
-st.sidebar.subheader("Normalization")
+# 2. CV Threshold
+st.sidebar.subheader("2. CV Threshold")
+cv_threshold = st.sidebar.slider(
+    "CV% threshold",
+    min_value=0,
+    max_value=100,
+    value=20,
+    help="Maximum allowed Coefficient of Variation percentage"
+)
+
+# 3. Missing Values Handling
+st.sidebar.subheader("3. Missing Values")
+missing_values_method = st.sidebar.selectbox(
+    "How to handle missing values?",
+    options=["none", "constant", "mean", "median", "knn", "half_min"],
+    help="Method to handle missing values in the dataset. Only applies to PG.Quantity columns."
+)
+
+# 4. Normalization Options
+st.sidebar.subheader("4. Normalization")
 normalization_method = st.sidebar.selectbox(
     "Normalization method",
     options=["none", "log2", "zscore", "median", "loess"],
@@ -83,15 +95,6 @@ if normalization_method != "none":
             help="Method to center the rows"
         )
 
-# CV Threshold
-cv_threshold = st.sidebar.slider(
-    "CV% threshold",
-    min_value=0,
-    max_value=100,
-    value=20,
-    help="Maximum allowed Coefficient of Variation percentage"
-)
-
 # Function to extract gene names from the Description column
 def extract_gene_name(description):
     if pd.isna(description):
@@ -109,12 +112,6 @@ def get_cache_key(file_name, processing_params):
         f"{k}:{str(v)}" for k, v in sorted(processing_params.items())
     ])
     return f"{file_name}_{param_str}"
-
-# Function to process data in chunks
-def process_data_chunk(data, numeric_cols, chunk_size=1000):
-    processed_data = data.copy()
-    for i in range(0, len(data), chunk_size):
-        yield i, i + chunk_size
 
 # Placeholder for datasets
 datasets = {}
@@ -139,12 +136,12 @@ if uploaded_files:
 
             # Create cache key
             processing_params = {
-                'missing_method': missing_values_method,
                 'min_valid': min_valid_values,
+                'cv_threshold': cv_threshold,
+                'missing_method': missing_values_method,
                 'norm_method': normalization_method,
                 'center': apply_centering if normalization_method != "none" else False,
-                'center_method': center_method if normalization_method != "none" and apply_centering else "none",
-                'cv_threshold': cv_threshold
+                'center_method': center_method if normalization_method != "none" and apply_centering else "none"
             }
             cache_key = get_cache_key(uploaded_file.name, processing_params)
 
@@ -155,42 +152,63 @@ if uploaded_files:
                 progress_bar.progress(100)
                 continue
 
-            # Process data
-            filtered_data = data.copy()
-
-            # Get only PG.Quantity columns for missing value handling
+            # Store original dataset and get quantity columns
             quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+            processed_data = {
+                'original': data.copy(),
+                'cv_filtered': None,
+                'missing_handled': None,
+                'normalized': None
+            }
 
-            # Handle missing values only if method is not "none"
+            # 1. Calculate CV on original data
+            status_container.text("Calculating CV on original data...")
+            structure = analyze_dataset_structure(data)
+            cv_results = calculate_cv_table(data, structure)
+
+            # 2. Apply valid values filter
+            status_container.text("Applying valid values filter...")
+            valid_counts = data[quantity_cols].notna().sum(axis=1)
+            valid_mask = valid_counts >= (len(quantity_cols) * min_valid_values/100)
+            filtered_data = data[valid_mask].copy()
+            progress_bar.progress(50)
+
+            # 3. Apply CV threshold filter
+            status_container.text("Applying CV threshold filter...")
+            cv_mask = pd.Series(True, index=filtered_data.index)
+            for group in structure["replicates"].keys():
+                group_cv = cv_results[[col for col in cv_results.columns if col.startswith(f"CV_{group}")]]
+                if not group_cv.empty:
+                    cv_mask &= (group_cv <= cv_threshold).all(axis=1)
+
+            filtered_data = filtered_data[cv_mask].copy()
+            processed_data['cv_filtered'] = filtered_data.copy()
+            progress_bar.progress(70)
+
+            # 4. Handle missing values if method is not "none"
             if missing_values_method != "none" and quantity_cols:
-                status_container.text("Handling missing values in quantity columns...")
+                status_container.text("Handling missing values...")
                 if missing_values_method == "half_min":
-                    chunk_size = 1000
-                    for start_idx, end_idx in process_data_chunk(filtered_data, quantity_cols, chunk_size):
-                        chunk = filtered_data.iloc[start_idx:end_idx]
-                        for idx in chunk.index:
-                            row_data = filtered_data.loc[idx, quantity_cols]
-                            if not row_data.isnull().all():
-                                min_val = row_data.min()
-                                filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
-                        progress = 40 + (start_idx // chunk_size) * 2
-                        progress_bar.progress(min(60, progress))
+                    for idx in filtered_data.index:
+                        row_data = filtered_data.loc[idx, quantity_cols]
+                        if not row_data.isnull().all():
+                            min_val = row_data.min()
+                            filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
                 else:
-                    # Only process quantity columns with existing function
                     quantity_data = handle_missing_values(
                         filtered_data[quantity_cols],
                         method=missing_values_method,
                         min_valid_values=min_valid_values/100
                     )
-                    # Update only quantity columns in filtered data
                     filtered_data[quantity_cols] = quantity_data
 
-            progress_bar.progress(70)
+            processed_data['missing_handled'] = filtered_data.copy()
+            progress_bar.progress(85)
 
-            # Apply normalization
+            # 5. Apply normalization if selected
             status_container.text("Applying normalization...")
-            try:
-                if normalization_method != "none":
+            if normalization_method != "none":
+                try:
                     normalized_data = normalize_data(
                         filtered_data,
                         method=normalization_method,
@@ -198,29 +216,20 @@ if uploaded_files:
                         center_method=center_method if apply_centering else None,
                         quantity_only=True
                     )
-                else:
+                except Exception as e:
+                    st.error(f"Error during normalization: {str(e)}")
                     normalized_data = filtered_data.copy()
-            except Exception as e:
-                st.error(f"Error during normalization: {str(e)}")
+            else:
                 normalized_data = filtered_data.copy()
-            progress_bar.progress(90)
 
-            # Store processed data
-            processed_data = {
-                'original': data,
-                'filtered': filtered_data,
-                'normalized': normalized_data
-            }
+            processed_data['normalized'] = normalized_data
+            progress_bar.progress(95)
 
-            # Cache results
-            st.session_state['processed_data'][cache_key] = processed_data
+            # Store the processed data
             datasets[uploaded_file.name] = processed_data
-
-            # Analyze structure
-            try:
-                dataset_structures[uploaded_file.name] = analyze_dataset_structure(normalized_data)
-            except Exception as e:
-                st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
+            dataset_structures[uploaded_file.name] = structure
+            st.session_state['processed_data'][cache_key] = processed_data
+            st.session_state['cv_results'][uploaded_file.name] = cv_results
 
             progress_bar.progress(100)
             status_container.empty()
@@ -243,11 +252,14 @@ if uploaded_files:
         )
 
         if dataset_name:
-            selected_data = datasets[dataset_name]['normalized']
-            original_data = datasets[dataset_name]['original']
+            processed_data = datasets[dataset_name]
+            original_data = processed_data['original']
+            filtered_data = processed_data['cv_filtered']
+            final_data = processed_data['normalized']
 
             if dataset_name in dataset_structures:
                 structure = dataset_structures[dataset_name]
+                cv_results = st.session_state['cv_results'][dataset_name]
 
                 st.subheader("Dataset Structure")
                 col1, col2 = st.columns(2)
@@ -265,16 +277,12 @@ if uploaded_files:
                     st.write(f"- Number of Conditions: {structure['summary']['num_conditions']}")
                     st.write(f"- Number of Quantity Columns: {structure['summary']['num_quantity_columns']}")
 
-                # Calculate and display CV for replicate groups
-                cv_results = calculate_cv_table(selected_data, structure)
-
-                st.subheader("Coefficient of Variation Analysis")
+                # Show CV analysis from original data
+                st.subheader("Coefficient of Variation Analysis (Original Data)")
                 for group in structure["replicates"].keys():
                     with st.expander(f"CV Analysis for {group}"):
-                        # Filter CV results for this group
                         group_cv = cv_results[[col for col in cv_results.columns if col.startswith(f"CV_{group}")]]
                         if not group_cv.empty:
-                            # Count proteins below threshold (changed from above)
                             below_threshold = (group_cv <= cv_threshold).sum().sum()
                             total_proteins = len(group_cv)
 
@@ -283,7 +291,6 @@ if uploaded_files:
                             st.write(f"- Proteins with CV ≤ {cv_threshold}%: {below_threshold}")
                             st.write(f"- Percentage below threshold: {(below_threshold/total_proteins*100):.1f}%")
 
-                            # Display CV distribution plot
                             fig = px.histogram(
                                 group_cv,
                                 nbins=50,
@@ -291,14 +298,14 @@ if uploaded_files:
                                 labels={'value': 'CV%', 'count': 'Number of Proteins'}
                             )
                             fig.add_vline(x=cv_threshold, line_dash="dash", line_color="red",
-                                            annotation_text=f"CV threshold ({cv_threshold}%)")
+                                        annotation_text=f"CV threshold ({cv_threshold}%)")
                             st.plotly_chart(fig)
 
                 # Display filtering summary
                 st.subheader("Filtering Summary")
                 st.write(f"- Original number of proteins: {len(original_data)}")
-                st.write(f"- Proteins after filtering: {len(selected_data)}")
-                st.write(f"- Proteins removed: {len(original_data) - len(selected_data)}")
+                st.write(f"- Proteins after valid values filter: {len(filtered_data)}")
+                st.write(f"- Proteins in final dataset: {len(final_data)}")
 
                 # Display replicate groups
                 st.subheader("Replicate Groups")
@@ -309,10 +316,10 @@ if uploaded_files:
                             st.write(f"- {col}")
 
             st.subheader("Data Preview")
-            st.dataframe(selected_data.head(10))
+            st.dataframe(final_data.head(10))
 
             st.subheader("Basic Statistics")
-            st.write(selected_data.describe())
+            st.write(final_data.describe())
 
     # Volcano Plot Tab
     with tab2:
