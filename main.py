@@ -10,7 +10,12 @@ from matplotlib.patches import Ellipse
 import seaborn as sns
 from scipy.stats import ttest_ind
 from scipy.cluster.hierarchy import linkage, dendrogram
-from utils.data_processing import analyze_dataset_structure, calculate_cv_table, handle_missing_values
+from utils.data_processing import (
+    analyze_dataset_structure, 
+    calculate_cv_table, 
+    handle_missing_values,
+    normalize_data
+)
 
 # Set page configuration
 st.set_page_config(
@@ -30,8 +35,17 @@ uploaded_files = st.sidebar.file_uploader(
     type=["xlsx"]
 )
 
-# Add filtering options in sidebar
-st.sidebar.header("Data Filtering Options")
+# Data Processing Options in sidebar
+st.sidebar.header("Data Processing Options")
+
+# Missing Values Handling
+st.sidebar.subheader("Missing Values")
+missing_values_method = st.sidebar.selectbox(
+    "How to handle missing values?",
+    options=["constant", "mean", "median", "knn"],
+    help="Method to handle missing values in the dataset"
+)
+
 min_valid_values = st.sidebar.slider(
     "Minimum % of valid values required",
     min_value=0,
@@ -40,6 +54,30 @@ min_valid_values = st.sidebar.slider(
     help="Filter out proteins with too many missing values"
 )
 
+# Normalization Options
+st.sidebar.subheader("Normalization")
+normalization_method = st.sidebar.selectbox(
+    "Normalization method",
+    options=["none", "log2", "zscore", "median"],
+    help="Method to normalize the data"
+)
+
+# Centering Options
+if normalization_method != "none":
+    apply_centering = st.sidebar.checkbox(
+        "Apply row centering",
+        value=False,
+        help="Center the data row-wise after normalization"
+    )
+
+    if apply_centering:
+        center_method = st.sidebar.selectbox(
+            "Centering method",
+            options=["zscore", "scale100"],
+            help="Method to center the rows"
+        )
+
+# CV Threshold
 cv_threshold = st.sidebar.slider(
     "CV% threshold",
     min_value=0,
@@ -61,8 +99,9 @@ def extract_gene_name(description):
 
 # Placeholder for datasets
 datasets = {}
-dataset_structures = {}  # Store analyzed structure for each dataset
-filtered_datasets = {}   # Store filtered versions of datasets
+dataset_structures = {}
+filtered_datasets = {}
+normalized_datasets = {}
 
 if uploaded_files:
     # Load and store datasets
@@ -70,23 +109,35 @@ if uploaded_files:
         try:
             data = pd.read_excel(uploaded_file)
             if "Description" in data.columns:
-                # Extract gene names
                 data["Gene Name"] = data["Description"].apply(extract_gene_name)
 
             # Store original dataset
             datasets[uploaded_file.name] = data
 
-            # Handle missing values based on threshold
+            # Handle missing values
             filtered_data = handle_missing_values(
                 data,
-                method="constant",
-                min_valid_values=min_valid_values/100  # Convert percentage to fraction
+                method=missing_values_method,
+                min_valid_values=min_valid_values/100
             )
-            filtered_datasets[uploaded_file.name] = filtered_data
 
-            # Analyze dataset structure
+            # Apply normalization if selected
+            if normalization_method != "none":
+                normalized_data = normalize_data(
+                    filtered_data,
+                    method=normalization_method,
+                    center_scale=apply_centering,
+                    center_method=center_method if apply_centering else None
+                )
+            else:
+                normalized_data = filtered_data.copy()
+
+            filtered_datasets[uploaded_file.name] = filtered_data
+            normalized_datasets[uploaded_file.name] = normalized_data
+
+            # Analyze dataset structure using normalized data
             try:
-                dataset_structures[uploaded_file.name] = analyze_dataset_structure(filtered_data)
+                dataset_structures[uploaded_file.name] = analyze_dataset_structure(normalized_data)
                 st.success(f"Successfully analyzed structure of {uploaded_file.name}")
             except Exception as e:
                 st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
@@ -106,7 +157,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            selected_data = filtered_datasets[dataset_name]
+            selected_data = normalized_datasets[dataset_name]
             original_data = datasets[dataset_name]
 
             # Display dataset structure information
@@ -130,7 +181,7 @@ if uploaded_files:
                     st.write(f"- Number of Quantity Columns: {structure['summary']['num_quantity_columns']}")
 
                 # Calculate and display CV for replicate groups
-                cv_results = calculate_cv_table(filtered_data, structure)
+                cv_results = calculate_cv_table(selected_data, structure)
 
                 st.subheader("Coefficient of Variation Analysis")
                 for group in structure["replicates"].keys():
@@ -187,7 +238,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            selected_data = filtered_datasets[dataset_name] # Use filtered data here
+            selected_data = normalized_datasets[dataset_name]
             # Column selection for volcano plot
             columns = selected_data.columns
             log2fc_col = st.selectbox("Select Log2 Fold Change Column", options=["Select a column"] + list(columns))
@@ -237,7 +288,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            data = filtered_datasets[dataset_name] # Use filtered data here
+            data = normalized_datasets[dataset_name]
             numeric_cols = data.select_dtypes(include=[np.number]).columns
 
             selected_columns = st.multiselect(
@@ -283,7 +334,7 @@ if uploaded_files:
         )
 
         if dataset_name:
-            data = filtered_datasets[dataset_name] #Use filtered data here
+            data = normalized_datasets[dataset_name]
             numeric_cols = data.select_dtypes(include=[np.number]).columns
 
             selected_columns = st.multiselect(
