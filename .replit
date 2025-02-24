@@ -9,7 +9,7 @@ deploymentTarget = "autoscale"
 run = ["sh", "-c", "streamlit run main.py"]
 
 [workflows]
-runButton = "Flask Server"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Project"
@@ -18,10 +18,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Flask Server"
+args = "Streamlit Server"
 
 [[workflows.workflow]]
-name = "Flask Server"
+name = "Streamlit Server"
 author = "agent"
 
 [workflows.workflow.metadata]
@@ -32,8 +32,8 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python app.py"
-waitForPort = 8080
+args = "streamlit run main.py"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000

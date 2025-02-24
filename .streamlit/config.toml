@@ -1,9 +1,13 @@
 [server]
 headless = true
-enableXsrfProtection = false
-enableCORS = true
 address = "0.0.0.0"
 port = 5000
+enableCORS = false
+enableXsrfProtection = false
 
 [browser]
 serverAddress = "0.0.0.0"
+serverPort = 5000
+
+[logger]
+level = "debug"
