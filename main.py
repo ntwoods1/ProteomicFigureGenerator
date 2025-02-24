@@ -42,8 +42,8 @@ st.sidebar.header("Data Processing Options")
 st.sidebar.subheader("Missing Values")
 missing_values_method = st.sidebar.selectbox(
     "How to handle missing values?",
-    options=["constant", "mean", "median", "knn"],
-    help="Method to handle missing values in the dataset"
+    options=["constant", "mean", "median", "knn", "half_min"],
+    help="Method to handle missing values in the dataset. 'half_min' uses 1/2 of the row minimum value."
 )
 
 min_valid_values = st.sidebar.slider(
@@ -58,8 +58,8 @@ min_valid_values = st.sidebar.slider(
 st.sidebar.subheader("Normalization")
 normalization_method = st.sidebar.selectbox(
     "Normalization method",
-    options=["none", "log2", "zscore", "median"],
-    help="Method to normalize the data"
+    options=["none", "log2", "zscore", "median", "loess"],
+    help="Method to normalize the data. LOESS performs local regression smoothing."
 )
 
 # Centering Options
@@ -114,12 +114,29 @@ if uploaded_files:
             # Store original dataset
             datasets[uploaded_file.name] = data
 
-            # Handle missing values
-            filtered_data = handle_missing_values(
-                data,
-                method=missing_values_method,
-                min_valid_values=min_valid_values/100
-            )
+            # Handle missing values with the new half_min option
+            if missing_values_method == "half_min":
+                # Get numeric columns
+                numeric_cols = data.select_dtypes(include=[np.number]).columns
+                filtered_data = data.copy()
+
+                # For each row, calculate half of minimum value and fill NaNs
+                for idx in filtered_data.index:
+                    row_data = filtered_data.loc[idx, numeric_cols]
+                    if not row_data.isnull().all():  # If row has some valid values
+                        min_val = row_data.min()
+                        filtered_data.loc[idx, numeric_cols] = row_data.fillna(min_val / 2)
+
+                # Filter based on minimum valid values requirement
+                valid_counts = filtered_data[numeric_cols].notna().sum(axis=1)
+                filtered_data = filtered_data[valid_counts >= (len(numeric_cols) * min_valid_values/100)]
+            else:
+                # Use existing handle_missing_values function for other methods
+                filtered_data = handle_missing_values(
+                    data,
+                    method=missing_values_method,
+                    min_valid_values=min_valid_values/100
+                )
 
             # Apply normalization if selected
             if normalization_method != "none":
