@@ -154,6 +154,10 @@ if uploaded_files:
 
             # Store original dataset and get quantity columns
             quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+            if not quantity_cols:
+                st.error(f"No quantitative columns (PG.Quantity) found in {uploaded_file.name}")
+                continue
+
             processed_data = {
                 'original': data.copy(),
                 'cv_filtered': None,
@@ -166,12 +170,18 @@ if uploaded_files:
             structure = analyze_dataset_structure(data)
             cv_results = calculate_cv_table(data, structure)
 
-            # 2. Apply valid values filter
-            status_container.text("Applying valid values filter...")
+            # 2. Apply valid values filter (only on PG.Quantity columns)
+            status_container.text("Applying valid values filter to quantitative columns...")
             valid_counts = data[quantity_cols].notna().sum(axis=1)
             valid_mask = valid_counts >= (len(quantity_cols) * min_valid_values/100)
             filtered_data = data[valid_mask].copy()
             progress_bar.progress(50)
+
+            # Add filtering statistics
+            n_original = len(data)
+            n_after_valid = len(filtered_data)
+            st.write(f"Valid values filter: {n_original - n_after_valid} proteins removed")
+
 
             # 3. Apply CV threshold filter
             status_container.text("Applying CV threshold filter...")
@@ -298,7 +308,7 @@ if uploaded_files:
                                 labels={'value': 'CV%', 'count': 'Number of Proteins'}
                             )
                             fig.add_vline(x=cv_threshold, line_dash="dash", line_color="red",
-                                        annotation_text=f"CV threshold ({cv_threshold}%)")
+                                            annotation_text=f"CV threshold ({cv_threshold}%)")
                             st.plotly_chart(fig)
 
                 # Display filtering summary
