@@ -27,6 +27,8 @@ st.set_page_config(
 # Initialize session state for data caching
 if 'processed_data' not in st.session_state:
     st.session_state['processed_data'] = {}
+if 'cv_results' not in st.session_state:
+    st.session_state['cv_results'] = {}
 
 # Title
 st.title("Proteomic Data Analysis")
@@ -103,7 +105,16 @@ def extract_gene_name(description):
 
 # Function to create cache key
 def get_cache_key(file_name, processing_params):
-    return f"{file_name}_{processing_params['missing_method']}_{processing_params['min_valid']}_{processing_params['norm_method']}_{processing_params['center']}_{processing_params['center_method']}"
+    param_str = "_".join([
+        f"{k}:{str(v)}" for k, v in sorted(processing_params.items())
+    ])
+    return f"{file_name}_{param_str}"
+
+# Function to process data in chunks
+def process_data_chunk(data, numeric_cols, chunk_size=1000):
+    processed_data = data.copy()
+    for i in range(0, len(data), chunk_size):
+        yield i, i + chunk_size
 
 # Placeholder for datasets
 datasets = {}
@@ -126,87 +137,84 @@ if uploaded_files:
                 data["Gene Name"] = data["Description"].apply(extract_gene_name)
             progress_bar.progress(30)
 
-            # Create cache key for current processing parameters
+            # Create cache key
             processing_params = {
                 'missing_method': missing_values_method,
                 'min_valid': min_valid_values,
                 'norm_method': normalization_method,
                 'center': apply_centering if normalization_method != "none" else False,
-                'center_method': center_method if normalization_method != "none" and apply_centering else "none"
+                'center_method': center_method if normalization_method != "none" and apply_centering else "none",
+                'cv_threshold': cv_threshold
             }
             cache_key = get_cache_key(uploaded_file.name, processing_params)
 
-            # Check if we have cached results
+            # Check cache
             if cache_key in st.session_state['processed_data']:
                 status_container.text("Using cached processed data...")
-                processed_data = st.session_state['processed_data'][cache_key]
+                datasets[uploaded_file.name] = st.session_state['processed_data'][cache_key]
                 progress_bar.progress(100)
+                continue
+
+            # Process data
+            numeric_cols = data.select_dtypes(include=[np.number]).columns
+            filtered_data = data.copy()
+
+            # Handle missing values
+            status_container.text("Handling missing values...")
+            if missing_values_method == "half_min":
+                chunk_size = 1000  # Increased chunk size for better performance
+                for start_idx, end_idx in process_data_chunk(filtered_data, numeric_cols, chunk_size):
+                    chunk = filtered_data.iloc[start_idx:end_idx]
+                    for idx in chunk.index:
+                        row_data = filtered_data.loc[idx, numeric_cols]
+                        if not row_data.isnull().all():
+                            min_val = row_data.min()
+                            filtered_data.loc[idx, numeric_cols] = row_data.fillna(min_val / 2)
+                    progress = 40 + (start_idx // chunk_size) * 2
+                    progress_bar.progress(min(60, progress))
             else:
-                # Handle missing values
-                status_container.text("Handling missing values...")
-                if missing_values_method == "half_min":
-                    numeric_cols = data.select_dtypes(include=[np.number]).columns
-                    filtered_data = data.copy()
+                filtered_data = handle_missing_values(
+                    data,
+                    method=missing_values_method,
+                    min_valid_values=min_valid_values/100
+                )
+            progress_bar.progress(70)
 
-                    # Process in chunks for better performance
-                    chunk_size = max(1, len(filtered_data) // 10)
-                    for i in range(0, len(filtered_data), chunk_size):
-                        chunk = filtered_data.iloc[i:i+chunk_size]
-                        for idx in chunk.index:
-                            row_data = filtered_data.loc[idx, numeric_cols]
-                            if not row_data.isnull().all():
-                                min_val = row_data.min()
-                                filtered_data.loc[idx, numeric_cols] = row_data.fillna(min_val / 2)
-                        progress = 40 + (i // chunk_size) * 2
-                        progress_bar.progress(min(60, progress))
-
-                    valid_counts = filtered_data[numeric_cols].notna().sum(axis=1)
-                    filtered_data = filtered_data[valid_counts >= (len(numeric_cols) * min_valid_values/100)]
-                else:
-                    filtered_data = handle_missing_values(
-                        data,
-                        method=missing_values_method,
-                        min_valid_values=min_valid_values/100
-                    )
-                progress_bar.progress(60)
-
-                # Apply normalization
-                status_container.text("Applying normalization...")
+            # Apply normalization
+            status_container.text("Applying normalization...")
+            try:
                 if normalization_method != "none":
-                    try:
-                        normalized_data = normalize_data(
-                            filtered_data,
-                            method=normalization_method,
-                            center_scale=apply_centering,
-                            center_method=center_method if apply_centering else None
-                        )
-                    except Exception as e:
-                        st.error(f"Error during normalization: {str(e)}")
-                        normalized_data = filtered_data.copy()
+                    normalized_data = normalize_data(
+                        filtered_data,
+                        method=normalization_method,
+                        center_scale=apply_centering,
+                        center_method=center_method if apply_centering else None
+                    )
                 else:
                     normalized_data = filtered_data.copy()
-                progress_bar.progress(80)
+            except Exception as e:
+                st.error(f"Error during normalization: {str(e)}")
+                normalized_data = filtered_data.copy()
+            progress_bar.progress(90)
 
-                # Analyze dataset structure
-                status_container.text("Analyzing dataset structure...")
-                try:
-                    structure = analyze_dataset_structure(normalized_data)
-                    dataset_structures[uploaded_file.name] = structure
-                except Exception as e:
-                    st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
-                progress_bar.progress(90)
+            # Store processed data
+            processed_data = {
+                'original': data,
+                'filtered': filtered_data,
+                'normalized': normalized_data
+            }
 
-                # Cache the processed data
-                processed_data = {
-                    'original': data,
-                    'filtered': filtered_data,
-                    'normalized': normalized_data
-                }
-                st.session_state['processed_data'][cache_key] = processed_data
-                progress_bar.progress(100)
-
-            # Store the processed data
+            # Cache results
+            st.session_state['processed_data'][cache_key] = processed_data
             datasets[uploaded_file.name] = processed_data
+
+            # Analyze structure
+            try:
+                dataset_structures[uploaded_file.name] = analyze_dataset_structure(normalized_data)
+            except Exception as e:
+                st.warning(f"Could not analyze structure of {uploaded_file.name}: {str(e)}")
+
+            progress_bar.progress(100)
             status_container.empty()
             progress_bar.empty()
             st.success(f"Successfully processed {uploaded_file.name}")
@@ -215,7 +223,7 @@ if uploaded_files:
             st.error(f"Error processing file {uploaded_file.name}: {e}")
             continue
 
-    # Tabs for different functionalities
+    # Display tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Data Overview", "Volcano Plot", "PCA", "Heat Map"])
 
     # Data Overview Tab
@@ -230,7 +238,6 @@ if uploaded_files:
             selected_data = datasets[dataset_name]['normalized']
             original_data = datasets[dataset_name]['original']
 
-            # Display dataset structure information
             if dataset_name in dataset_structures:
                 structure = dataset_structures[dataset_name]
 
@@ -259,14 +266,14 @@ if uploaded_files:
                         # Filter CV results for this group
                         group_cv = cv_results[[col for col in cv_results.columns if col.startswith(f"CV_{group}")]]
                         if not group_cv.empty:
-                            # Count proteins above threshold
-                            above_threshold = (group_cv > cv_threshold).sum().sum()
+                            # Count proteins below threshold (changed from above)
+                            below_threshold = (group_cv <= cv_threshold).sum().sum()
                             total_proteins = len(group_cv)
 
                             st.write(f"**CV Statistics for {group}:**")
                             st.write(f"- Total proteins: {total_proteins}")
-                            st.write(f"- Proteins with CV > {cv_threshold}%: {above_threshold}")
-                            st.write(f"- Percentage above threshold: {(above_threshold/total_proteins*100):.1f}%")
+                            st.write(f"- Proteins with CV ≤ {cv_threshold}%: {below_threshold}")
+                            st.write(f"- Percentage below threshold: {(below_threshold/total_proteins*100):.1f}%")
 
                             # Display CV distribution plot
                             fig = px.histogram(
@@ -275,7 +282,8 @@ if uploaded_files:
                                 title=f"CV Distribution for {group}",
                                 labels={'value': 'CV%', 'count': 'Number of Proteins'}
                             )
-                            fig.add_vline(x=cv_threshold, line_dash="dash", line_color="red")
+                            fig.add_vline(x=cv_threshold, line_dash="dash", line_color="red",
+                                        annotation_text=f"CV threshold ({cv_threshold}%)")
                             st.plotly_chart(fig)
 
                 # Display filtering summary
