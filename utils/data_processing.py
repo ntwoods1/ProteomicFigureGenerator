@@ -350,7 +350,7 @@ def batch_correct(df, batch_col, data_cols):
 def calculate_cv_table(df, dataset_info=None):
     """
     Calculate coefficient of variation (CV) for all replicate groups and return as a table.
-
+    CV is calculated as (standard deviation / mean * 100) for each group of replicates.
     Returns a DataFrame with protein IDs as index and CV values for each replicate group.
     """
     if dataset_info is None:
@@ -365,10 +365,13 @@ def calculate_cv_table(df, dataset_info=None):
             group_data = df[replicate_cols]
 
             # Calculate CV for this group
-            group_cv = (group_data.std(axis=1) / group_data.mean(axis=1) * 100)
-            cv_results[f"CV_{group}"] = group_cv
-            cv_results[f"Mean_{group}"] = group_data.mean(axis=1)
-            cv_results[f"StdDev_{group}"] = group_data.std(axis=1)
+            mean = group_data.mean(axis=1)
+            std = group_data.std(axis=1, ddof=1)  # Using ddof=1 for sample standard deviation
+            cv = (std / mean.replace(0, np.nan)) * 100  # Avoid division by zero
+
+            cv_results[f"CV_{group}"] = cv
+            cv_results[f"Mean_{group}"] = mean
+            cv_results[f"StdDev_{group}"] = std
 
     # Add description if available
     if "Description" in df.columns:

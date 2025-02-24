@@ -234,12 +234,26 @@ if uploaded_files:
             # 4. Apply CV threshold filter
             status_container.text("Applying CV threshold filter...")
             cv_mask = pd.Series(True, index=filtered_data.index)
+
+            # Calculate CV for each group and filter
+            proteins_passing_cv = 0
             for group in structure["replicates"].keys():
                 group_cv = cv_results[[col for col in cv_results.columns if col.startswith(f"CV_{group}")]]
                 if not group_cv.empty:
-                    cv_mask &= (group_cv <= cv_threshold).all(axis=1)
+                    # A protein passes if its CV is <= threshold for this group
+                    group_mask = (group_cv <= cv_threshold).any(axis=1)
+                    cv_mask &= group_mask
+                    proteins_passing_cv += group_mask.sum()
 
+            # Show CV filtering statistics
+            n_before_cv = len(filtered_data)
             final_filtered_data = filtered_data[cv_mask].copy()
+            n_after_cv = len(final_filtered_data)
+            st.write(f"CV filter statistics:")
+            st.write(f"- Proteins before CV filter: {n_before_cv}")
+            st.write(f"- Proteins passing CV threshold: {proteins_passing_cv}")
+            st.write(f"- Proteins after CV filter: {n_after_cv}")
+
             processed_data['cv_filtered'] = final_filtered_data.copy()
             progress_bar.progress(70)
 
