@@ -3,13 +3,14 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
-from upsetplot import from_memberships, UpSet, from_contents
+from upsetplot import UpSet, from_contents
 import tempfile
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
 import seaborn as sns
 from scipy.stats import ttest_ind
 from scipy.cluster.hierarchy import linkage, dendrogram
+import io
 from utils.data_processing import (
     analyze_dataset_structure, 
     calculate_cv_table, 
@@ -590,13 +591,13 @@ if uploaded_files:
                                                 search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
 
                                             marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                           for up, down in zip(significant_up, significant_down)]
+                                                               for up, down in zip(significant_up, significant_down)]
                                             marker_colors = [color if not mask else 'yellow' 
-                                                           for color, mask in zip(marker_colors, search_mask)]
+                                                               for color, mask in zip(marker_colors, search_mask)]
                                             marker_sizes = [15 if m else 8 for m in search_mask]
                                         else:
                                             marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                           for up, down in zip(significant_up, significant_down)]
+                                                               for up, down in zip(significant_up, significant_down)]
                                             marker_sizes = [8] * len(volcano_data)
 
                                         # Update plot markers
@@ -629,7 +630,7 @@ if uploaded_files:
                                                 st.warning(f"No proteins found matching '{search_protein}'")
 
                                         # Download buttons
-                                        col1, col2 = st.columns(2)
+                                        col1, col2, col3 = st.columns(3)
                                         with col1:
                                             html_buffer = fig.to_html()
                                             st.download_button(
@@ -639,6 +640,15 @@ if uploaded_files:
                                                 mime="text/html"
                                             )
                                         with col2:
+                                            # Save as SVG
+                                            svg_buffer = fig.to_image(format="svg")
+                                            st.download_button(
+                                                label="Download Plot as SVG",
+                                                data=svg_buffer,
+                                                file_name=f"volcano_plot_{group2}_vs_{group1}.svg",
+                                                mime="image/svg+xml"
+                                            )
+                                        with col3:
                                             csv_buffer = volcano_data.to_csv(index=True)
                                             st.download_button(
                                                 label="Download Results as CSV",
@@ -672,20 +682,88 @@ if uploaded_files:
                                 st.subheader("Up-regulated Proteins")
                                 st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
 
+                                # Create figure
                                 fig_up = plt.figure(figsize=(12, 6))
-                                upset = UpSet(from_contents(up_sets))  # Use default parameters
+                                upset = UpSet(from_contents(up_sets))
                                 upset.plot(fig=fig_up)
                                 st.pyplot(fig_up)
+
+                                # Create download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    # Save SVG
+                                    buffer = io.BytesIO()
+                                    fig_up.savefig(buffer, format='svg', bbox_inches='tight')
+                                    buffer.seek(0)
+                                    st.download_button(
+                                        label="Download Plot as SVG",
+                                        data=buffer,
+                                        file_name="upset_plot_upregulated.svg",
+                                        mime="image/svg+xml"
+                                    )
+                                with col2:
+                                    # Create protein list with group memberships
+                                    protein_data = []
+                                    all_proteins = set().union(*up_sets.values())
+                                    for protein in all_proteins:
+                                        groups = [group for group, proteins in up_sets.items() if protein in proteins]
+                                        protein_data.append({
+                                            'Protein': protein,
+                                            'Groups': ';'.join(groups),
+                                            'Number_of_Groups': len(groups)
+                                        })
+                                    protein_df = pd.DataFrame(protein_data)
+                                    protein_csv = protein_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="Download Protein List",
+                                        data=protein_csv,
+                                        file_name="upregulated_proteins.csv",
+                                        mime="text/csv"
+                                    )
                                 plt.close(fig_up)
 
                             if down_sets:
                                 st.subheader("Down-regulated Proteins")
                                 st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
 
+                                # Create figure
                                 fig_down = plt.figure(figsize=(12, 6))
-                                upset = UpSet(from_contents(down_sets))  # Use default parameters
+                                upset = UpSet(from_contents(down_sets))
                                 upset.plot(fig=fig_down)
                                 st.pyplot(fig_down)
+
+                                # Create download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    # Save SVG
+                                    buffer = io.BytesIO()
+                                    fig_down.savefig(buffer, format='svg', bbox_inches='tight')
+                                    buffer.seek(0)
+                                    st.download_button(
+                                        label="Download Plot as SVG",
+                                        data=buffer,
+                                        file_name="upset_plot_downregulated.svg",
+                                        mime="image/svg+xml"
+                                    )
+                                with col2:
+                                    # Create protein list with group memberships
+                                    protein_data = []
+                                    all_proteins = set().union(*down_sets.values())
+                                    for protein in all_proteins:
+                                        groups = [group for group, proteins in down_sets.items() if protein in proteins]
+                                        protein_data.append({
+                                            'Protein': protein,
+                                            'Groups': ';'.join(groups),
+                                            'Number_of_Groups': len(groups)
+                                        })
+                                    protein_df = pd.DataFrame(protein_data)
+                                    protein_csv = protein_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="Download Protein List",
+                                        data=protein_csv,
+                                        file_name="downregulated_proteins.csv",
+                                        mime="text/csv"
+                                    )
                                 plt.close(fig_down)
 
                         except Exception as e:
