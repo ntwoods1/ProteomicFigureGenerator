@@ -477,6 +477,12 @@ if uploaded_files:
                 all_groups = list(structure["replicates"].keys())
 
                 if all_groups:
+                    # Add protein search box
+                    search_protein = st.text_input(
+                        "Search for protein (Gene Name or Description)",
+                        help="Enter protein name to highlight in the plot"
+                    )
+
                     # Group selection for comparison
                     col1, col2 = st.columns(2)
                     with col1:
@@ -530,6 +536,24 @@ if uploaded_files:
                                 pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1)
                                 log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1)
 
+                                # After creating volcano_data DataFrame, add search functionality
+                                if search_protein:
+                                    # Search in both Gene Name and Description if available
+                                    search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
+                                    if 'Description' in selected_data.columns:
+                                        search_mask |= selected_data['Description'].str.contains(search_protein, case=False, na=False)
+
+                                    # Add a column for search highlighting
+                                    volcano_data['highlighted'] = search_mask
+
+                                # Plot appearance options
+                                st.sidebar.subheader("Plot Options")
+                                plot_bg_color = st.sidebar.selectbox(
+                                    "Plot background color",
+                                    options=["white", "black", "transparent"],
+                                    index=0
+                                )
+
                                 # Generate interactive volcano plot
                                 fig = px.scatter(
                                     volcano_data,
@@ -543,24 +567,62 @@ if uploaded_files:
                                     title=f"Volcano Plot: {group2} vs {group1}"
                                 )
 
+                                # Update plot appearance
+                                fig.update_layout(
+                                    plot_bgcolor=plot_bg_color,
+                                    paper_bgcolor=plot_bg_color,
+                                    font_color='black' if plot_bg_color == 'white' else 'white'
+                                )
+
                                 # Add cutoff lines
                                 fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
                                 fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
                                 fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
 
-                                # Color points based on significance
+                                # Color points based on significance and search
                                 significant = (volcano_data['-log10(p-value)'] >= pval_cutoff) & \
-                                            (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
+                                                (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
+                                base_colors = significant.map({True: 'red', False: 'gray'})
+                                if search_protein and not volcano_data['highlighted'].empty:
+                                    marker_colors = base_colors.copy()
+                                    marker_colors[volcano_data['highlighted']] = 'yellow'
+                                    marker_sizes = [15 if h else 8 for h in volcano_data['highlighted']]
+                                else:
+                                    marker_colors = base_colors
+                                    marker_sizes = [8] * len(volcano_data)
 
-                                # Update point colors
+                                # Update point colors and sizes
                                 fig.update_traces(
                                     marker=dict(
-                                        color=significant.map({True: 'red', False: 'gray'}),
-                                        size=8
+                                        color=marker_colors,
+                                        size=marker_sizes
                                     )
                                 )
 
+                                # Display plot
                                 st.plotly_chart(fig, use_container_width=True)
+
+                                # Add download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    # Download plot as HTML
+                                    html_buffer = fig.to_html()
+                                    st.download_button(
+                                        label="Download Plot as HTML",
+                                        data=html_buffer,
+                                        file_name=f"volcano_plot_{group2}_vs_{group1}.html",
+                                        mime="text/html"
+                                    )
+
+                                with col2:
+                                    # Download results as CSV
+                                    csv_buffer = volcano_data.to_csv(index=True)
+                                    st.download_button(
+                                        label="Download Results as CSV",
+                                        data=csv_buffer,
+                                        file_name=f"volcano_results_{group2}_vs_{group1}.csv",
+                                        mime="text/csv"
+                                    )
 
                                 # Display summary statistics
                                 total_proteins = len(volcano_data)
