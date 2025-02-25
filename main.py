@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
-from upsetplot import UpSet, from_contents
+from upsetplot import UpSet
 import tempfile
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
@@ -652,54 +652,49 @@ if uploaded_files:
                                             if len(st.session_state['volcano_comparisons']) > 1:
                                                 st.header("Overlap Analysis")
 
-                                                # Collect all proteins and prepare comparison names
+                                                # Convert the sets to a binary matrix
                                                 all_proteins = set()
-                                                comparison_names = []
-                                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                for comp_data in st.session_state['volcano_comparisons'].values():
                                                     all_proteins.update(comp_data['significant_up'])
                                                     all_proteins.update(comp_data['significant_down'])
-                                                    comparison_names.append(comp_key)
 
-                                                if all_proteins:  # Only proceed if we have proteins to analyze
-                                                    # Create membership arrays for upset plots
-                                                    membership_data = []
-                                                    for protein in all_proteins:
-                                                        # For up-regulated proteins
-                                                        up_membership = [1 if protein in st.session_state['volcano_comparisons'][comp]['significant_up'] else 0 
-                                                                       for comp in comparison_names]
-                                                        if any(up_membership):  # Only add if protein is up-regulated in any comparison
-                                                            membership_data.append(up_membership)
+                                                # Create binary matrices
+                                                up_matrix = pd.DataFrame(0, index=list(all_proteins), 
+                                                                       columns=list(st.session_state['volcano_comparisons'].keys()))
+                                                down_matrix = pd.DataFrame(0, index=list(all_proteins), 
+                                                                         columns=list(st.session_state['volcano_comparisons'].keys()))
 
-                                                    if membership_data:
-                                                        # Convert to DataFrame for UpSet plot
-                                                        up_df = pd.DataFrame(membership_data, columns=comparison_names)
+                                                # Fill the matrices
+                                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                    up_matrix[comp_key] = [1 if protein in comp_data['significant_up'] else 0 
+                                                                         for protein in up_matrix.index]
+                                                    down_matrix[comp_key] = [1 if protein in comp_data['significant_down'] else 0 
+                                                                           for protein in down_matrix.index]
 
-                                                        st.subheader("Up-regulated Proteins Overlap")
-                                                        fig_up = plt.figure(figsize=(12, 6))
-                                                        upset = UpSet(up_df, min_subset_size=1,
-                                                                    intersection_plot_elements=3)
-                                                        upset.plot()
-                                                        st.pyplot(fig_up)
-                                                        plt.close(fig_up)
+                                                # Remove rows with all zeros
+                                                up_matrix = up_matrix.loc[up_matrix.sum(axis=1) > 0]
+                                                down_matrix = down_matrix.loc[down_matrix.sum(axis=1) > 0]
 
-                                                    # Repeat for down-regulated proteins
-                                                    membership_data = []
-                                                    for protein in all_proteins:
-                                                        down_membership = [1 if protein in st.session_state['volcano_comparisons'][comp]['significant_down'] else 0 
-                                                                         for comp in comparison_names]
-                                                        if any(down_membership):
-                                                            membership_data.append(down_membership)
+                                                # Create UpSet plots
+                                                if not up_matrix.empty:
+                                                    st.subheader("Up-regulated Proteins Overlap")
+                                                    fig_up, ax = plt.subplots(figsize=(12, 6))
+                                                    upset = UpSet(up_matrix, subset_size='count', 
+                                                                show_counts=True,
+                                                                sort_by='cardinality')
+                                                    upset.plot(fig=fig_up)
+                                                    st.pyplot(fig_up)
+                                                    plt.close(fig_up)
 
-                                                    if membership_data:
-                                                        down_df = pd.DataFrame(membership_data, columns=comparison_names)
-
-                                                        st.subheader("Down-regulated Proteins Overlap")
-                                                        fig_down = plt.figure(figsize=(12, 6))
-                                                        upset = UpSet(down_df, min_subset_size=1,
-                                                                    intersection_plot_elements=3)
-                                                        upset.plot()
-                                                        st.pyplot(fig_down)
-                                                        plt.close(fig_down)
+                                                if not down_matrix.empty:
+                                                    st.subheader("Down-regulated Proteins Overlap")
+                                                    fig_down, ax = plt.subplots(figsize=(12, 6))
+                                                    upset = UpSet(down_matrix, subset_size='count',
+                                                                show_counts=True,
+                                                                sort_by='cardinality')
+                                                    upset.plot(fig=fig_down)
+                                                    st.pyplot(fig_down)
+                                                    plt.close(fig_down)
 
                                         except Exception as e:
                                             st.error(f"Error generating overlap analysis: {str(e)}")
@@ -730,15 +725,15 @@ if uploaded_files:
             data = datasets[dataset_name]['normalized']
             numeric_cols = data.select_dtypes(include=[np.number]).columns
 
-            selected_columns = st.multiselect(
+            selectedcolumns = st.multiselect(
                 "Select columns for PCA",
                 options=numeric_cols,
                 default=numeric_cols[:3] if len(numeric_cols) > 2 else numeric_cols
             )
 
-            if len(selected_columns) >= 2:
+            if len(selectedcolumns) >= 2:
                 try:
-                    X = data[selected_columns].dropna()
+                    X = data[selectedcolumns].dropna()
                     if not X.empty:
                         pca = PCA()
                         X_pca = pca.fit_transform(X)
@@ -764,13 +759,17 @@ if uploaded_files:
                 except Exception as e:
                     st.error(f"Error performing PCA: {e}")
 
+                else:
+                    st.warning("Please select at least 2 columns for PCA")
+
     # Heat Map Tab
     with tab4:
         st.header("Heat Map")
         dataset_name = st.selectbox(
             "Select dataset for heat map",
             options=list(datasets.keys()),
-            key="heatmap_dataset"        )
+            key="heatmap_dataset"
+        )
 
         if dataset_name:
             data = datasets[dataset_name]['normalized']
