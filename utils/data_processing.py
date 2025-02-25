@@ -79,10 +79,11 @@ def validate_data(df):
         validation_results["valid"] = False
         validation_results["errors"].append("At least 2 numeric columns required for analysis")
 
-    # Check for peptide count columns
-    peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified")]
+    # Check for peptide count columns (both types)
+    peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified") or 
+                   col.endswith("PG.NrOfPrecursorsMeasured")]
     if not peptide_cols:
-        validation_results["warnings"].append("No peptide count columns found (ending with 'PG.NrOfStrippedSequencesIdentified')")
+        validation_results["warnings"].append("No peptide count columns found (ending with either 'PG.NrOfStrippedSequencesIdentified' or 'PG.NrOfPrecursorsMeasured')")
 
     return validation_results
 
@@ -90,12 +91,14 @@ def filter_by_peptide_count(df, min_peptides=1):
     """
     Filter proteins based on the number of peptides used for identification.
     Only keeps proteins that have at least min_peptides in any sample.
+    Considers both PG.NrOfStrippedSequencesIdentified and PG.NrOfPrecursorsMeasured columns.
     """
-    # Find all peptide count columns
-    peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified")]
+    # Find all peptide count columns for both types
+    peptide_cols = [col for col in df.columns if col.endswith("PG.NrOfStrippedSequencesIdentified") or 
+                   col.endswith("PG.NrOfPrecursorsMeasured")]
 
     if not peptide_cols:
-        raise ValueError("No peptide count columns found (ending with 'PG.NrOfStrippedSequencesIdentified')")
+        raise ValueError("No peptide count columns found (ending with either 'PG.NrOfStrippedSequencesIdentified' or 'PG.NrOfPrecursorsMeasured')")
 
     # Calculate maximum peptide count for each protein across all samples
     max_peptides = df[peptide_cols].max(axis=1)
