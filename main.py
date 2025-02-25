@@ -477,12 +477,6 @@ if uploaded_files:
                 all_groups = list(structure["replicates"].keys())
 
                 if all_groups:
-                    # Add protein search box
-                    search_protein = st.text_input(
-                        "Search for protein (Gene Name or Description)",
-                        help="Enter protein name to highlight in the plot"
-                    )
-
                     # Group selection for comparison
                     col1, col2 = st.columns(2)
                     with col1:
@@ -528,23 +522,16 @@ if uploaded_files:
                                 volcano_data = pd.DataFrame({
                                     'log2FoldChange': log2fc,
                                     '-log10(p-value)': -np.log10(p_values),
-                                    'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index
+                                    'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index,
+                                    'Description': selected_data['Description'] if 'Description' in selected_data.columns else '',
+                                    'Mean1': group1_data.mean(axis=1),
+                                    'Mean2': group2_data.mean(axis=1)
                                 })
                                 volcano_data = volcano_data.replace([np.inf, -np.inf], np.nan).dropna()
 
                                 # Significance thresholds
                                 pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1)
                                 log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1)
-
-                                # After creating volcano_data DataFrame, add search functionality
-                                if search_protein:
-                                    # Search in both Gene Name and Description if available
-                                    search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
-                                    if 'Description' in selected_data.columns:
-                                        search_mask |= selected_data['Description'].str.contains(search_protein, case=False, na=False)
-
-                                    # Add a column for search highlighting
-                                    volcano_data['highlighted'] = search_mask
 
                                 # Plot appearance options
                                 st.sidebar.subheader("Plot Options")
@@ -562,16 +549,21 @@ if uploaded_files:
                                     hover_name=volcano_data['Gene Name'],
                                     hover_data={
                                         'log2FoldChange': ':.2f',
-                                        '-log10(p-value)': ':.2f'
+                                        '-log10(p-value)': ':.2f',
+                                        'Mean1': ':.2f',
+                                        'Mean2': ':.2f'
                                     },
                                     title=f"Volcano Plot: {group2} vs {group1}"
                                 )
 
-                                # Update plot appearance
+                                # Update plot appearance - keep text black regardless of background
                                 fig.update_layout(
                                     plot_bgcolor=plot_bg_color,
                                     paper_bgcolor=plot_bg_color,
-                                    font_color='black' if plot_bg_color == 'white' else 'white'
+                                    font_color='black',
+                                    title_font_color='black',
+                                    xaxis=dict(color='black'),
+                                    yaxis=dict(color='black')
                                 )
 
                                 # Add cutoff lines
@@ -579,28 +571,55 @@ if uploaded_files:
                                 fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
                                 fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
 
-                                # Color points based on significance and search
+                                # Color points based on significance
                                 significant = (volcano_data['-log10(p-value)'] >= pval_cutoff) & \
-                                                (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
+                                            (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
                                 base_colors = significant.map({True: 'red', False: 'gray'})
-                                if search_protein and not volcano_data['highlighted'].empty:
-                                    marker_colors = base_colors.copy()
-                                    marker_colors[volcano_data['highlighted']] = 'yellow'
-                                    marker_sizes = [15 if h else 8 for h in volcano_data['highlighted']]
-                                else:
-                                    marker_colors = base_colors
-                                    marker_sizes = [8] * len(volcano_data)
-
-                                # Update point colors and sizes
-                                fig.update_traces(
-                                    marker=dict(
-                                        color=marker_colors,
-                                        size=marker_sizes
-                                    )
-                                )
 
                                 # Display plot
                                 st.plotly_chart(fig, use_container_width=True)
+
+                                # Add protein search below plot
+                                search_protein = st.text_input(
+                                    "Search for protein (Gene Name or Description)",
+                                    help="Enter protein name to highlight in the plot"
+                                )
+
+                                if search_protein:
+                                    # Search in both Gene Name and Description
+                                    search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
+                                    if 'Description' in volcano_data.columns:
+                                        search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
+
+                                    # Update plot with highlighted points
+                                    marker_colors = base_colors.copy()
+                                    marker_colors[search_mask] = 'yellow'
+                                    marker_sizes = [15 if h else 8 for h in search_mask]
+
+                                    fig.update_traces(
+                                        marker=dict(
+                                            color=marker_colors,
+                                            size=marker_sizes
+                                        )
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
+
+                                    # Display detailed results for found proteins
+                                    found_proteins = volcano_data[search_mask]
+                                    if not found_proteins.empty:
+                                        st.write("### Search Results")
+                                        for idx, row in found_proteins.iterrows():
+                                            st.write(f"**Gene:** {row['Gene Name']}")
+                                            if 'Description' in row:
+                                                st.write(f"**Description:** {row['Description']}")
+                                            st.write(f"**Expression:**")
+                                            st.write(f"- {group1}: {row['Mean1']:.2f}")
+                                            st.write(f"- {group2}: {row['Mean2']:.2f}")
+                                            st.write(f"**Log2 Fold Change:** {row['log2FoldChange']:.2f}")
+                                            st.write(f"**-log10(p-value):** {row['-log10(p-value)']:.2f}")
+                                            st.write("---")
+                                    else:
+                                        st.warning(f"No proteins found matching '{search_protein}'")
 
                                 # Add download buttons
                                 col1, col2 = st.columns(2)
@@ -635,8 +654,8 @@ if uploaded_files:
                                 st.warning("Selected groups don't have quantitative data for comparison")
                         except Exception as e:
                             st.error(f"Error generating volcano plot: {str(e)}")
-                else:
-                    st.warning("No replicate groups found in the dataset")
+                    else:
+                        st.warning("No replicate groups found in the dataset")
             else:
                 st.error("Dataset structure information not found")
         else:
