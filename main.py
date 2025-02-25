@@ -652,31 +652,55 @@ if uploaded_files:
                                             if len(st.session_state['volcano_comparisons']) > 1:
                                                 st.header("Overlap Analysis")
 
-                                                # Create sets for up and down regulated proteins
-                                                up_regulated_sets = {
-                                                    f"{comp_key}_up": comp_data['significant_up']
-                                                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items()
-                                                    if comp_data['significant_up']
-                                                }
+                                                # Collect all proteins and prepare comparison names
+                                                all_proteins = set()
+                                                comparison_names = []
+                                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                    all_proteins.update(comp_data['significant_up'])
+                                                    all_proteins.update(comp_data['significant_down'])
+                                                    comparison_names.append(comp_key)
 
-                                                down_regulated_sets = {
-                                                    f"{comp_key}_down": comp_data['significant_down']
-                                                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items()
-                                                    if comp_data['significant_down']
-                                                }
+                                                if all_proteins:  # Only proceed if we have proteins to analyze
+                                                    # Create membership arrays for upset plots
+                                                    membership_data = []
+                                                    for protein in all_proteins:
+                                                        # For up-regulated proteins
+                                                        up_membership = [1 if protein in st.session_state['volcano_comparisons'][comp]['significant_up'] else 0 
+                                                                       for comp in comparison_names]
+                                                        if any(up_membership):  # Only add if protein is up-regulated in any comparison
+                                                            membership_data.append(up_membership)
 
-                                                # Create UpSet plots
-                                                if up_regulated_sets:
-                                                    st.subheader("Up-regulated Proteins Overlap")
-                                                    fig_up = plt.figure(figsize=(10, 6))
-                                                    UpSet(from_contents(up_regulated_sets), min_subset_size=1).plot()
-                                                    st.pyplot(fig_up)
+                                                    if membership_data:
+                                                        # Convert to DataFrame for UpSet plot
+                                                        up_df = pd.DataFrame(membership_data, columns=comparison_names)
 
-                                                if down_regulated_sets:
-                                                    st.subheader("Down-regulated Proteins Overlap")
-                                                    fig_down = plt.figure(figsize=(10, 6))
-                                                    UpSet(from_contents(down_regulated_sets), min_subset_size=1).plot()
-                                                    st.pyplot(fig_down)
+                                                        st.subheader("Up-regulated Proteins Overlap")
+                                                        fig_up = plt.figure(figsize=(12, 6))
+                                                        upset = UpSet(up_df, min_subset_size=1,
+                                                                    intersection_plot_elements=3)
+                                                        upset.plot()
+                                                        st.pyplot(fig_up)
+                                                        plt.close(fig_up)
+
+                                                    # Repeat for down-regulated proteins
+                                                    membership_data = []
+                                                    for protein in all_proteins:
+                                                        down_membership = [1 if protein in st.session_state['volcano_comparisons'][comp]['significant_down'] else 0 
+                                                                         for comp in comparison_names]
+                                                        if any(down_membership):
+                                                            membership_data.append(down_membership)
+
+                                                    if membership_data:
+                                                        down_df = pd.DataFrame(membership_data, columns=comparison_names)
+
+                                                        st.subheader("Down-regulated Proteins Overlap")
+                                                        fig_down = plt.figure(figsize=(12, 6))
+                                                        upset = UpSet(down_df, min_subset_size=1,
+                                                                    intersection_plot_elements=3)
+                                                        upset.plot()
+                                                        st.pyplot(fig_down)
+                                                        plt.close(fig_down)
+
                                         except Exception as e:
                                             st.error(f"Error generating overlap analysis: {str(e)}")
 
@@ -708,7 +732,8 @@ if uploaded_files:
 
             selected_columns = st.multiselect(
                 "Select columns for PCA",
-                options=numeric_cols
+                options=numeric_cols,
+                default=numeric_cols[:3] if len(numeric_cols) > 2 else numeric_cols
             )
 
             if len(selected_columns) >= 2:
