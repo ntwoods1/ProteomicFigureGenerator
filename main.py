@@ -652,58 +652,41 @@ if uploaded_files:
                                             if len(st.session_state['volcano_comparisons']) > 1:
                                                 st.header("Overlap Analysis")
 
-                                                # Collect all proteins and their set memberships
-                                                all_proteins_up = set()
-                                                all_proteins_down = set()
+                                                try:
+                                                    # Prepare data for up-regulated genes
+                                                    up_data = []
+                                                    down_data = []
 
-                                                # First collect all proteins
-                                                for comp_data in st.session_state['volcano_comparisons'].values():
-                                                    all_proteins_up.update(comp_data['significant_up'])
-                                                    all_proteins_down.update(comp_data['significant_down'])
+                                                    # Create membership tuples for each protein
+                                                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                        for gene in comp_data['significant_up']:
+                                                            up_data.append((gene, comp_key))
+                                                        for gene in comp_data['significant_down']:
+                                                            down_data.append((gene, comp_key))
 
-                                                # Create data for up-regulated proteins
-                                                if all_proteins_up:
-                                                    data_up = []
-                                                    for protein in all_proteins_up:
-                                                        # For each protein, check which sets it belongs to
-                                                        membership = []
-                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                            if protein in comp_data['significant_up']:
-                                                                membership.append(comp_key)
-                                                        if membership:  # Only add if protein belongs to at least one set
-                                                            data_up.append((protein, membership))
+                                                    # Convert to pandas DataFrame with proper structure for UpSet
+                                                    if up_data:
+                                                        df_up = pd.DataFrame(up_data, columns=['Gene', 'Comparison'])
+                                                        upset_data_up = df_up.groupby('Gene')['Comparison'].apply(list)
 
-                                                    # Create binary indicator series for each protein
-                                                    upset_data_up = pd.Series(data=[x[1] for x in data_up], 
-                                                                            index=[x[0] for x in data_up])
-
-                                                    if not upset_data_up.empty:
                                                         st.subheader("Up-regulated Proteins Overlap")
                                                         fig_up = plt.figure(figsize=(12, 6))
-                                                        UpSet(upset_data_up, show_counts=True, sort_by='cardinality').plot()
+                                                        UpSet(upset_data_up, show_counts=True).plot()
                                                         st.pyplot(fig_up)
                                                         plt.close(fig_up)
 
-                                                # Create data for down-regulated proteins
-                                                if all_proteins_down:
-                                                    data_down = []
-                                                    for protein in all_proteins_down:
-                                                        membership = []
-                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                            if protein in comp_data['significant_down']:
-                                                                membership.append(comp_key)
-                                                        if membership:
-                                                            data_down.append((protein, membership))
+                                                    if down_data:
+                                                        df_down = pd.DataFrame(down_data, columns=['Gene', 'Comparison'])
+                                                        upset_data_down = df_down.groupby('Gene')['Comparison'].apply(list)
 
-                                                    upset_data_down = pd.Series(data=[x[1] for x in data_down], 
-                                                                              index=[x[0] for x in data_down])
-
-                                                    if not upset_data_down.empty:
                                                         st.subheader("Down-regulated Proteins Overlap")
                                                         fig_down = plt.figure(figsize=(12, 6))
-                                                        UpSet(upset_data_down, show_counts=True, sort_by='cardinality').plot()
+                                                        UpSet(upset_data_down, show_counts=True).plot()
                                                         st.pyplot(fig_down)
                                                         plt.close(fig_down)
+
+                                                except Exception as e:
+                                                    st.error(f"Error generating overlap analysis: {str(e)}")
 
                                         except Exception as e:
                                             st.error(f"Error generating overlap analysis: {str(e)}")
@@ -755,7 +738,7 @@ if uploaded_files:
                         fig = px.scatter(
                             pca_df,
                             x='PC1',
-                            y='PC2',
+y='PC2',
                             title='PCA Plot',
                             labels={
                                 'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
