@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
-from upsetplot import UpSet
+from upsetplot import from_memberships, UpSet
 import tempfile
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
@@ -653,35 +653,48 @@ if uploaded_files:
                                                 st.header("Overlap Analysis")
 
                                                 try:
-                                                    # Prepare data for up-regulated genes
-                                                    up_data = []
-                                                    down_data = []
+                                                    # Create membership lists for upsetplot
+                                                    up_members = []
+                                                    down_members = []
 
-                                                    # Create membership tuples for each protein
-                                                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                        for gene in comp_data['significant_up']:
-                                                            up_data.append((gene, comp_key))
-                                                        for gene in comp_data['significant_down']:
-                                                            down_data.append((gene, comp_key))
+                                                    # Collect all proteins
+                                                    all_proteins_up = set()
+                                                    all_proteins_down = set()
+                                                    for comp_data in st.session_state['volcano_comparisons'].values():
+                                                        all_proteins_up.update(comp_data['significant_up'])
+                                                        all_proteins_down.update(comp_data['significant_down'])
 
-                                                    # Convert to pandas DataFrame with proper structure for UpSet
-                                                    if up_data:
-                                                        df_up = pd.DataFrame(up_data, columns=['Gene', 'Comparison'])
-                                                        upset_data_up = df_up.groupby('Gene')['Comparison'].apply(list)
+                                                    # Create membership data
+                                                    for protein in all_proteins_up:
+                                                        membership = []
+                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                            if protein in comp_data['significant_up']:
+                                                                membership.append(comp_key)
+                                                        if membership:  # Only add if protein belongs to at least one set
+                                                            up_members.append(membership)
 
+                                                    for protein in all_proteins_down:
+                                                        membership = []
+                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                            if protein in comp_data['significant_down']:
+                                                                membership.append(comp_key)
+                                                        if membership:  # Only add if protein belongs to at least one set
+                                                            down_members.append(membership)
+
+                                                    # Generate UpSet plots
+                                                    if up_members:
                                                         st.subheader("Up-regulated Proteins Overlap")
                                                         fig_up = plt.figure(figsize=(12, 6))
-                                                        UpSet(upset_data_up, show_counts=True).plot()
+                                                        upset = from_memberships(up_members)
+                                                        UpSet(upset, show_counts=True).plot()
                                                         st.pyplot(fig_up)
                                                         plt.close(fig_up)
 
-                                                    if down_data:
-                                                        df_down = pd.DataFrame(down_data, columns=['Gene', 'Comparison'])
-                                                        upset_data_down = df_down.groupby('Gene')['Comparison'].apply(list)
-
+                                                    if down_members:
                                                         st.subheader("Down-regulated Proteins Overlap")
                                                         fig_down = plt.figure(figsize=(12, 6))
-                                                        UpSet(upset_data_down, show_counts=True).plot()
+                                                        upset = from_memberships(down_members)
+                                                        UpSet(upset, show_counts=True).plot()
                                                         st.pyplot(fig_down)
                                                         plt.close(fig_down)
 
@@ -738,7 +751,7 @@ if uploaded_files:
                         fig = px.scatter(
                             pca_df,
                             x='PC1',
-y='PC2',
+                            y='PC2',
                             title='PCA Plot',
                             labels={
                                 'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
@@ -750,8 +763,8 @@ y='PC2',
                 except Exception as e:
                     st.error(f"Error performing PCA: {e}")
 
-                else:
-                    st.warning("Please select at least 2 columns for PCA")
+            else:
+                st.warning("Please select at least 2 columns for PCA")
 
     # Heat Map Tab
     with tab4:
