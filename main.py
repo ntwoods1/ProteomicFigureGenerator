@@ -30,6 +30,8 @@ if 'processed_data' not in st.session_state:
     st.session_state['processed_data'] = {}
 if 'cv_results' not in st.session_state:
     st.session_state['cv_results'] = {}
+if 'dataset_structures' not in st.session_state:
+    st.session_state['dataset_structures'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -197,6 +199,8 @@ if uploaded_files:
             # 2. Calculate CV on peptide-filtered data
             status_container.text("Calculating CV on filtered data...")
             structure = analyze_dataset_structure(peptide_filtered_data)
+            st.session_state['dataset_structures'][uploaded_file.name] = structure
+            dataset_structures[uploaded_file.name] = structure
             cv_results = calculate_cv_table(peptide_filtered_data, structure)
             progress_bar.progress(40)
 
@@ -323,6 +327,7 @@ if uploaded_files:
             dataset_structures[uploaded_file.name] = structure
             st.session_state['processed_data'][cache_key] = processed_data
             st.session_state['cv_results'][uploaded_file.name] = cv_results
+            st.session_state['dataset_structures'][uploaded_file.name] = structure
 
             progress_bar.progress(100)
             status_container.empty()
@@ -455,9 +460,19 @@ if uploaded_files:
         if dataset_name and dataset_name in datasets:
             selected_data = datasets[dataset_name]['normalized']
 
-            if dataset_name in dataset_structures:
-                structure = dataset_structures[dataset_name]
+            # Get structure from session state
+            if dataset_name in st.session_state['dataset_structures']:
+                structure = st.session_state['dataset_structures'][dataset_name]
+            else:
+                # If structure not in session state, regenerate it
+                try:
+                    structure = analyze_dataset_structure(selected_data)
+                    st.session_state['dataset_structures'][dataset_name] = structure
+                except Exception as e:
+                    st.error(f"Error analyzing dataset structure: {str(e)}")
+                    structure = None
 
+            if structure:
                 # Get unique groups from replicate structure
                 all_groups = list(structure["replicates"].keys())
 
