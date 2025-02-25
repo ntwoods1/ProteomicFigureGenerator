@@ -443,119 +443,130 @@ if uploaded_files:
     # Volcano Plot Tab
     with tab2:
         st.header("Volcano Plot")
+
+        # Dataset selection with default empty option
+        dataset_options = [""] + list(datasets.keys())
         dataset_name = st.selectbox(
-            "Select a dataset for the Volcano Plot",
-            options=list(datasets.keys()),
+            "Select a dataset for Volcano Plot",
+            options=dataset_options,
             key="volcano_dataset"
         )
 
-        if dataset_name and dataset_name in datasets and dataset_name in dataset_structures:
+        if dataset_name and dataset_name in datasets:
             selected_data = datasets[dataset_name]['normalized']
-            structure = dataset_structures[dataset_name]
 
-            # Get unique groups from replicate structure
-            all_groups = list(structure["replicates"].keys())
+            if dataset_name in dataset_structures:
+                structure = dataset_structures[dataset_name]
 
-            # Group selection for comparison
-            col1, col2 = st.columns(2)
-            with col1:
-                group1 = st.selectbox(
-                    "Select first group",
-                    options=all_groups,
-                    key="volcano_group1"
-                )
-            with col2:
-                remaining_groups = [g for g in all_groups if g != group1] if group1 else all_groups
-                group2 = st.selectbox(
-                    "Select second group",
-                    options=remaining_groups,
-                    key="volcano_group2"
-                )
+                # Get unique groups from replicate structure
+                all_groups = list(structure["replicates"].keys())
 
-            if group1 and group2 and group1 in structure["replicates"] and group2 in structure["replicates"]:
-                # Get the quantity columns for each group
-                group1_cols = [col for col in structure["replicates"][group1] if col.endswith("PG.Quantity")]
-                group2_cols = [col for col in structure["replicates"][group2] if col.endswith("PG.Quantity")]
+                if all_groups:
+                    # Group selection for comparison
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        group1 = st.selectbox(
+                            "Select first group",
+                            options=all_groups,
+                            key="volcano_group1"
+                        )
+                    with col2:
+                        remaining_groups = [g for g in all_groups if g != group1] if group1 else all_groups
+                        group2 = st.selectbox(
+                            "Select second group",
+                            options=remaining_groups,
+                            key="volcano_group2"
+                        )
 
-                if group1_cols and group2_cols:
-                    try:
-                        # Calculate fold change and p-values
-                        group1_data = selected_data[group1_cols]
-                        group2_data = selected_data[group2_cols]
+                    if group1 and group2:
+                        try:
+                            # Get the quantity columns for each group
+                            group1_cols = [col for col in structure["replicates"][group1] if col.endswith("PG.Quantity")]
+                            group2_cols = [col for col in structure["replicates"][group2] if col.endswith("PG.Quantity")]
 
-                        # Calculate log2 fold change
-                        log2fc = np.log2(group2_data.mean(axis=1) / group1_data.mean(axis=1))
+                            if group1_cols and group2_cols:
+                                # Calculate fold change and p-values
+                                group1_data = selected_data[group1_cols]
+                                group2_data = selected_data[group2_cols]
 
-                        # Calculate p-values using t-test
-                        p_values = []
-                        for idx in selected_data.index:
-                            g1_values = group1_data.loc[idx].dropna()
-                            g2_values = group2_data.loc[idx].dropna()
-                            if len(g1_values) >= 2 and len(g2_values) >= 2:
-                                _, p_val = ttest_ind(g1_values, g2_values)
-                                p_values.append(p_val)
+                                # Calculate log2 fold change
+                                log2fc = np.log2(group2_data.mean(axis=1) / group1_data.mean(axis=1))
+
+                                # Calculate p-values using t-test
+                                p_values = []
+                                for idx in selected_data.index:
+                                    g1_values = group1_data.loc[idx].dropna()
+                                    g2_values = group2_data.loc[idx].dropna()
+                                    if len(g1_values) >= 2 and len(g2_values) >= 2:
+                                        _, p_val = ttest_ind(g1_values, g2_values)
+                                        p_values.append(p_val)
+                                    else:
+                                        p_values.append(np.nan)
+
+                                # Create DataFrame for volcano plot
+                                volcano_data = pd.DataFrame({
+                                    'log2FoldChange': log2fc,
+                                    '-log10(p-value)': -np.log10(p_values),
+                                    'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index
+                                })
+                                volcano_data = volcano_data.replace([np.inf, -np.inf], np.nan).dropna()
+
+                                # Significance thresholds
+                                pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1)
+                                log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1)
+
+                                # Generate interactive volcano plot
+                                fig = px.scatter(
+                                    volcano_data,
+                                    x='log2FoldChange',
+                                    y='-log10(p-value)',
+                                    hover_name=volcano_data['Gene Name'],
+                                    hover_data={
+                                        'log2FoldChange': ':.2f',
+                                        '-log10(p-value)': ':.2f'
+                                    },
+                                    title=f"Volcano Plot: {group2} vs {group1}"
+                                )
+
+                                # Add cutoff lines
+                                fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
+                                fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
+                                fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
+
+                                # Color points based on significance
+                                significant = (volcano_data['-log10(p-value)'] >= pval_cutoff) & \
+                                            (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
+
+                                # Update point colors
+                                fig.update_traces(
+                                    marker=dict(
+                                        color=significant.map({True: 'red', False: 'gray'}),
+                                        size=8
+                                    )
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Display summary statistics
+                                total_proteins = len(volcano_data)
+                                sig_proteins = significant.sum()
+                                st.write(f"Total proteins analyzed: {total_proteins}")
+                                st.write(f"Significantly different proteins: {sig_proteins}")
+                                st.write(f"Percentage significant: {(sig_proteins/total_proteins*100):.1f}%")
+
                             else:
-                                p_values.append(np.nan)
-
-                        # Create DataFrame for volcano plot
-                        volcano_data = pd.DataFrame({
-                            'log2FoldChange': log2fc,
-                            '-log10(p-value)': -np.log10(p_values),
-                            'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index
-                        })
-                        volcano_data = volcano_data.replace([np.inf, -np.inf], np.nan).dropna()
-
-                        # Significance thresholds
-                        pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1)
-                        log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1)
-
-                        # Generate interactive volcano plot
-                        fig = px.scatter(
-                            volcano_data,
-                            x='log2FoldChange',
-                            y='-log10(p-value)',
-                            hover_name=volcano_data['Gene Name'],
-                            hover_data={
-                                'log2FoldChange': ':.2f',
-                                '-log10(p-value)': ':.2f'
-                            },
-                            title=f"Volcano Plot: {group2} vs {group1}"
-                        )
-
-                        # Add cutoff lines
-                        fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
-                        fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
-                        fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
-
-                        # Color points based on significance
-                        significant = (volcano_data['-log10(p-value)'] >= pval_cutoff) & \
-                                    (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
-
-                        # Update point colors
-                        fig.update_traces(
-                            marker=dict(
-                                color=significant.map({True: 'red', False: 'gray'}),
-                                size=8
-                            )
-                        )
-
-                        st.plotly_chart(fig, use_container_width=True)
-
-                        # Display summary statistics
-                        total_proteins = len(volcano_data)
-                        sig_proteins = significant.sum()
-                        st.write(f"Total proteins analyzed: {total_proteins}")
-                        st.write(f"Significantly different proteins: {sig_proteins}")
-                        st.write(f"Percentage significant: {(sig_proteins/total_proteins*100):.1f}%")
-
-                    except Exception as e:
-                        st.error(f"Error generating volcano plot: {str(e)}")
+                                st.warning("Selected groups don't have quantitative data for comparison")
+                        except Exception as e:
+                            st.error(f"Error generating volcano plot: {str(e)}")
                 else:
-                    st.warning("Selected groups don't have quantity data for comparison")
+                    st.warning("No replicate groups found in the dataset")
             else:
-                st.info("Please select two different groups to compare")
+                st.error("Dataset structure information not found")
         else:
-            st.info("Please select a dataset to create a volcano plot")
+            if dataset_name:
+                st.error("Selected dataset not found")
+            else:
+                st.info("Please select a dataset to create a volcano plot")
 
     # PCA Tab
     with tab3:
