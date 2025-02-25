@@ -652,49 +652,58 @@ if uploaded_files:
                                             if len(st.session_state['volcano_comparisons']) > 1:
                                                 st.header("Overlap Analysis")
 
-                                                # Convert the sets to a binary matrix
-                                                all_proteins = set()
+                                                # Collect all proteins and their set memberships
+                                                all_proteins_up = set()
+                                                all_proteins_down = set()
+
+                                                # First collect all proteins
                                                 for comp_data in st.session_state['volcano_comparisons'].values():
-                                                    all_proteins.update(comp_data['significant_up'])
-                                                    all_proteins.update(comp_data['significant_down'])
+                                                    all_proteins_up.update(comp_data['significant_up'])
+                                                    all_proteins_down.update(comp_data['significant_down'])
 
-                                                # Create binary matrices
-                                                up_matrix = pd.DataFrame(0, index=list(all_proteins), 
-                                                                       columns=list(st.session_state['volcano_comparisons'].keys()))
-                                                down_matrix = pd.DataFrame(0, index=list(all_proteins), 
-                                                                         columns=list(st.session_state['volcano_comparisons'].keys()))
+                                                # Create data for up-regulated proteins
+                                                if all_proteins_up:
+                                                    data_up = []
+                                                    for protein in all_proteins_up:
+                                                        # For each protein, check which sets it belongs to
+                                                        membership = []
+                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                            if protein in comp_data['significant_up']:
+                                                                membership.append(comp_key)
+                                                        if membership:  # Only add if protein belongs to at least one set
+                                                            data_up.append((protein, membership))
 
-                                                # Fill the matrices
-                                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                    up_matrix[comp_key] = [1 if protein in comp_data['significant_up'] else 0 
-                                                                         for protein in up_matrix.index]
-                                                    down_matrix[comp_key] = [1 if protein in comp_data['significant_down'] else 0 
-                                                                           for protein in down_matrix.index]
+                                                    # Create binary indicator series for each protein
+                                                    upset_data_up = pd.Series(data=[x[1] for x in data_up], 
+                                                                            index=[x[0] for x in data_up])
 
-                                                # Remove rows with all zeros
-                                                up_matrix = up_matrix.loc[up_matrix.sum(axis=1) > 0]
-                                                down_matrix = down_matrix.loc[down_matrix.sum(axis=1) > 0]
+                                                    if not upset_data_up.empty:
+                                                        st.subheader("Up-regulated Proteins Overlap")
+                                                        fig_up = plt.figure(figsize=(12, 6))
+                                                        UpSet(upset_data_up, show_counts=True, sort_by='cardinality').plot()
+                                                        st.pyplot(fig_up)
+                                                        plt.close(fig_up)
 
-                                                # Create UpSet plots
-                                                if not up_matrix.empty:
-                                                    st.subheader("Up-regulated Proteins Overlap")
-                                                    fig_up, ax = plt.subplots(figsize=(12, 6))
-                                                    upset = UpSet(up_matrix, subset_size='count', 
-                                                                show_counts=True,
-                                                                sort_by='cardinality')
-                                                    upset.plot(fig=fig_up)
-                                                    st.pyplot(fig_up)
-                                                    plt.close(fig_up)
+                                                # Create data for down-regulated proteins
+                                                if all_proteins_down:
+                                                    data_down = []
+                                                    for protein in all_proteins_down:
+                                                        membership = []
+                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                            if protein in comp_data['significant_down']:
+                                                                membership.append(comp_key)
+                                                        if membership:
+                                                            data_down.append((protein, membership))
 
-                                                if not down_matrix.empty:
-                                                    st.subheader("Down-regulated Proteins Overlap")
-                                                    fig_down, ax = plt.subplots(figsize=(12, 6))
-                                                    upset = UpSet(down_matrix, subset_size='count',
-                                                                show_counts=True,
-                                                                sort_by='cardinality')
-                                                    upset.plot(fig=fig_down)
-                                                    st.pyplot(fig_down)
-                                                    plt.close(fig_down)
+                                                    upset_data_down = pd.Series(data=[x[1] for x in data_down], 
+                                                                              index=[x[0] for x in data_down])
+
+                                                    if not upset_data_down.empty:
+                                                        st.subheader("Down-regulated Proteins Overlap")
+                                                        fig_down = plt.figure(figsize=(12, 6))
+                                                        UpSet(upset_data_down, show_counts=True, sort_by='cardinality').plot()
+                                                        st.pyplot(fig_down)
+                                                        plt.close(fig_down)
 
                                         except Exception as e:
                                             st.error(f"Error generating overlap analysis: {str(e)}")
@@ -717,8 +726,7 @@ if uploaded_files:
         st.header("Principal Component Analysis")
         dataset_name = st.selectbox(
             "Select dataset for PCA",
-            options=list(datasets.keys()),
-            key="pca_dataset"
+            options=list(datasets.keys()),            key="pca_dataset"
         )
 
         if dataset_name:
