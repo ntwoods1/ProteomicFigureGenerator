@@ -556,16 +556,6 @@ if uploaded_files:
                                     title=f"Volcano Plot: {group2} vs {group1}"
                                 )
 
-                                # Update plot appearance - keep text black regardless of background
-                                fig.update_layout(
-                                    plot_bgcolor=plot_bg_color,
-                                    paper_bgcolor=plot_bg_color,
-                                    font_color='black',
-                                    title_font_color='black',
-                                    xaxis=dict(color='black'),
-                                    yaxis=dict(color='black')
-                                )
-
                                 # Add cutoff lines
                                 fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
                                 fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
@@ -576,35 +566,40 @@ if uploaded_files:
                                             (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
                                 base_colors = significant.map({True: 'red', False: 'gray'})
 
-                                # Display plot
-                                st.plotly_chart(fig, use_container_width=True)
-
                                 # Add protein search below plot
                                 search_protein = st.text_input(
                                     "Search for protein (Gene Name or Description)",
                                     help="Enter protein name to highlight in the plot"
                                 )
 
+                                # Update plot colors based on search
                                 if search_protein:
                                     # Search in both Gene Name and Description
                                     search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
                                     if 'Description' in volcano_data.columns:
                                         search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
 
-                                    # Update plot with highlighted points
+                                    # Update colors for searched proteins
                                     marker_colors = base_colors.copy()
                                     marker_colors[search_mask] = 'yellow'
                                     marker_sizes = [15 if h else 8 for h in search_mask]
+                                else:
+                                    marker_colors = base_colors
+                                    marker_sizes = [8] * len(volcano_data)
 
-                                    fig.update_traces(
-                                        marker=dict(
-                                            color=marker_colors,
-                                            size=marker_sizes
-                                        )
+                                # Update plot markers
+                                fig.update_traces(
+                                    marker=dict(
+                                        color=marker_colors,
+                                        size=marker_sizes
                                     )
-                                    st.plotly_chart(fig, use_container_width=True)
+                                )
 
-                                    # Display detailed results for found proteins
+                                # Display plot
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Display detailed results for found proteins if search was performed
+                                if search_protein:
                                     found_proteins = volcano_data[search_mask]
                                     if not found_proteins.empty:
                                         st.write("### Search Results")
