@@ -574,34 +574,49 @@ if uploaded_files:
                                         significant_up = significant & (volcano_data['log2FoldChange'] >= log2fc_cutoff)
                                         significant_down = significant & (volcano_data['log2FoldChange'] <= -log2fc_cutoff)
 
-                                        search_protein = st.text_input(
-                                            "Search for protein (Gene Name or Description)",
-                                            help="Enter protein name to highlight in the plot",
-                                            key=f"{comp_key}_search"
-                                        )
+                                        # Create color array
+                                        marker_colors = ['red' if up else 'blue' if down else 'gray' 
+                                                       for up, down in zip(significant_up, significant_down)]
 
-                                        # Update colors based on search
-                                        if search_protein:
-                                            search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
-                                            if 'Description' in volcano_data.columns:
-                                                search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
-                                            marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                           for up, down in zip(significant_up, significant_down)]
-                                            marker_colors = ['yellow' if mask else color 
-                                                           for color, mask in zip(marker_colors, search_mask)]
-                                            marker_sizes = [15 if m else 8 for m in search_mask]
-                                        else:
-                                            marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                           for up, down in zip(significant_up, significant_down)]
-                                            marker_sizes = [8] * len(volcano_data)
+                                        # Add protein labels input
+                                        proteins_to_label = st.text_area(
+                                            "Enter protein names to label (one per line)",
+                                            help="Enter gene names (one per line) to add labels on the plot",
+                                            key=f"{comp_key}_proteins"
+                                        ).strip().split('\n')
+
+                                        # Filter out empty lines
+                                        proteins_to_label = [p.strip() for p in proteins_to_label if p.strip()]
 
                                         # Update Plotly markers
                                         fig_plotly.update_traces(
                                             marker=dict(
                                                 color=marker_colors,
-                                                size=marker_sizes
+                                                size=8
                                             )
                                         )
+
+                                        # Add labels for selected proteins in Plotly
+                                        if proteins_to_label:
+                                            for protein in proteins_to_label:
+                                                mask = volcano_data['Gene Name'].str.contains(protein, case=False, na=False)
+                                                if mask.any():
+                                                    for idx in volcano_data[mask].index:
+                                                        gene_name = volcano_data.loc[idx, 'Gene Name']
+                                                        x = volcano_data.loc[idx, 'log2FoldChange']
+                                                        y = volcano_data.loc[idx, '-log10(p-value)']
+
+                                                        fig_plotly.add_annotation(
+                                                            x=x,
+                                                            y=y,
+                                                            text=gene_name,
+                                                            showarrow=True,
+                                                            arrowhead=2,
+                                                            arrowsize=1,
+                                                            arrowwidth=2,
+                                                            ax=20,
+                                                            ay=-30
+                                                        )
 
                                         # Display interactive Plotly plot
                                         st.plotly_chart(fig_plotly, use_container_width=True)
@@ -614,9 +629,27 @@ if uploaded_files:
                                             volcano_data['log2FoldChange'],
                                             volcano_data['-log10(p-value)'],
                                             c=marker_colors,
-                                            s=[s*10 for s in marker_sizes],
+                                            s=80,
                                             alpha=0.6
                                         )
+
+                                        # Add labels for selected proteins in Matplotlib
+                                        if proteins_to_label:
+                                            for protein in proteins_to_label:
+                                                mask = volcano_data['Gene Name'].str.contains(protein, case=False, na=False)
+                                                if mask.any():
+                                                    for idx in volcano_data[mask].index:
+                                                        gene_name = volcano_data.loc[idx, 'Gene Name']
+                                                        x = volcano_data.loc[idx, 'log2FoldChange']
+                                                        y = volcano_data.loc[idx, '-log10(p-value)']
+                                                        ax.annotate(
+                                                            gene_name, 
+                                                            (x, y),
+                                                            xytext=(5, 5), 
+                                                            textcoords='offset points',
+                                                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
+                                                            arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
+                                                        )
 
                                         # Add cutoff lines
                                         ax.axhline(y=pval_cutoff, color='red', linestyle='--', alpha=0.5)
@@ -658,23 +691,24 @@ if uploaded_files:
                                         st.session_state['volcano_comparisons'][comp_key]['significant_up'] = set(volcano_data[significant_up]['Gene Name'])
                                         st.session_state['volcano_comparisons'][comp_key]['significant_down'] = set(volcano_data[significant_down]['Gene Name'])
 
-                                        # Display detailed results for found proteins if search was performed
-                                        if search_protein:
-                                            found_proteins = volcano_data[search_mask]
-                                            if not found_proteins.empty:
-                                                st.write("### Search Results")
-                                                for idx, row in found_proteins.iterrows():
-                                                    st.write(f"**Gene:** {row['Gene Name']}")
-                                                    if 'Description' in row:
-                                                        st.write(f"**Description:** {row['Description']}")
-                                                    st.write(f"**Expression:**")
-                                                    st.write(f"- {group1}: {row['Mean1']:.2f}")
-                                                    st.write(f"- {group2}: {row['Mean2']:.2f}")
-                                                    st.write(f"**Log2 Fold Change:** {row['log2FoldChange']:.2f}")
-                                                    st.write(f"**-log10(p-value):** {row['-log10(p-value)']:.2f}")
-                                                    st.write("---")
-                                            else:
-                                                st.warning(f"No proteins found matching '{search_protein}'")
+                                        # Display detailed results for labeled proteins
+                                        if proteins_to_label:
+                                            st.subheader("Details for labeled proteins:")
+                                            for protein in proteins_to_label:
+                                                mask = volcano_data['Gene Name'].str.contains(protein, case=False, na=False)
+                                                if mask.any():
+                                                    matching_proteins = volcano_data[mask]
+                                                    for _, row in matching_proteins.iterrows():
+                                                        st.write(f"**Gene Name:** {row['Gene Name']}")
+                                                        if 'Description' in row:
+                                                            st.write(f"**Description:** {row['Description']}")
+                                                        st.write(f"**Log2 Fold Change:** {row['log2FoldChange']:.2f}")
+                                                        st.write(f"**-log10(p-value):** {row['-log10(p-value)']:.2f}")
+                                                        st.write(f"**Mean {group1}:** {row['Mean1']:.2f}")
+                                                        st.write(f"**Mean {group2}:** {row['Mean2']:.2f}")
+                                                        st.write("---")
+                                                else:
+                                                    st.warning(f"No proteins found matching '{protein}'")
 
                                 except Exception as e:
                                     st.error(f"Error generating volcano plot: {str(e)}")
@@ -764,7 +798,8 @@ if uploaded_files:
                                         file_name="upset_plot_downregulated.svg",
                                         mime="image/svg+xml"
                                     )
-                                with col2:                                    # Create protein list with group memberships
+                                with col2:
+                                    # Create protein list with group memberships
                                     protein_data = []
                                     all_proteins = set().union(*down_sets.values())
                                     for protein in all_proteins:
