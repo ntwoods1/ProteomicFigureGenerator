@@ -548,68 +548,88 @@ if uploaded_files:
                                         pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1, key=f"{comp_key}_pval")
                                         log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1, key=f"{comp_key}_fc")
 
-                                        # Generate interactive volcano plot
-                                        fig = px.scatter(
-                                            volcano_data,
-                                            x='log2FoldChange',
-                                            y='-log10(p-value)',
-                                            hover_name=volcano_data['Gene Name'],
-                                            hover_data={
-                                                'log2FoldChange': ':.2f',
-                                                '-log10(p-value)': ':.2f',
-                                                'Mean1': ':.2f',
-                                                'Mean2': ':.2f'
-                                            },
-                                            title=f"Volcano Plot: {group2} vs {group1}"
-                                        )
-
-                                        # Add cutoff lines
-                                        fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
-                                        fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
-                                        fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
-
                                         # Color points based on significance
                                         significant = (volcano_data['-log10(p-value)'] >= pval_cutoff)
                                         significant_up = significant & (volcano_data['log2FoldChange'] >= log2fc_cutoff)
                                         significant_down = significant & (volcano_data['log2FoldChange'] <= -log2fc_cutoff)
 
-                                        # Store significant proteins
-                                        st.session_state['volcano_comparisons'][comp_key]['significant_up'] = set(volcano_data[significant_up]['Gene Name'])
-                                        st.session_state['volcano_comparisons'][comp_key]['significant_down'] = set(volcano_data[significant_down]['Gene Name'])
-
-                                        # Add protein search below plot
                                         search_protein = st.text_input(
                                             "Search for protein (Gene Name or Description)",
                                             help="Enter protein name to highlight in the plot",
                                             key=f"{comp_key}_search"
                                         )
 
-                                        # Update plot colors based on search
                                         if search_protein:
                                             search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
                                             if 'Description' in volcano_data.columns:
                                                 search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
-
                                             marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                               for up, down in zip(significant_up, significant_down)]
-                                            marker_colors = [color if not mask else 'yellow' 
-                                                               for color, mask in zip(marker_colors, search_mask)]
+                                                           for up, down in zip(significant_up, significant_down)]
+                                            marker_colors = ['yellow' if mask else color 
+                                                           for color, mask in zip(marker_colors, search_mask)]
                                             marker_sizes = [15 if m else 8 for m in search_mask]
                                         else:
                                             marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                               for up, down in zip(significant_up, significant_down)]
+                                                           for up, down in zip(significant_up, significant_down)]
                                             marker_sizes = [8] * len(volcano_data)
 
-                                        # Update plot markers
-                                        fig.update_traces(
-                                            marker=dict(
-                                                color=marker_colors,
-                                                size=marker_sizes
-                                            )
+                                        # Generate volcano plot using matplotlib
+                                        fig, ax = plt.subplots(figsize=(12, 8))
+
+                                        # Plot points
+                                        scatter = ax.scatter(
+                                            volcano_data['log2FoldChange'],
+                                            volcano_data['-log10(p-value)'],
+                                            c=marker_colors,
+                                            s=[s*10 for s in marker_sizes],
+                                            alpha=0.6
                                         )
 
-                                        # Display plot
-                                        st.plotly_chart(fig, use_container_width=True)
+                                        # Add cutoff lines
+                                        ax.axhline(y=pval_cutoff, color='red', linestyle='--', alpha=0.5)
+                                        ax.axvline(x=log2fc_cutoff, color='blue', linestyle='--', alpha=0.5)
+                                        ax.axvline(x=-log2fc_cutoff, color='blue', linestyle='--', alpha=0.5)
+
+                                        # Labels and title
+                                        ax.set_xlabel('log2 Fold Change')
+                                        ax.set_ylabel('-log10(p-value)')
+                                        ax.set_title(f'Volcano Plot: {group2} vs {group1}')
+
+                                        # Add grid
+                                        ax.grid(True, alpha=0.3)
+
+                                        # Show plot
+                                        st.pyplot(fig)
+
+                                        # Download buttons
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            # Save SVG
+                                            buffer = io.BytesIO()
+                                            fig.savefig(buffer, format='svg', bbox_inches='tight')
+                                            buffer.seek(0)
+                                            st.download_button(
+                                                label="Download Plot as SVG",
+                                                data=buffer,
+                                                file_name=f"volcano_plot_{group2}_vs_{group1}.svg",
+                                                mime="image/svg+xml"
+                                            )
+                                        with col2:
+                                            csv_buffer = volcano_data.to_csv(index=True)
+                                            st.download_button(
+                                                label="Download Results as CSV",
+                                                data=csv_buffer,
+                                                file_name=f"volcano_data_{group2}_vs_{group1}.csv",
+                                                mime="text/csv"
+                                            )
+                                        plt.close(fig)
+
+                                        # Store significant proteins
+                                        st.session_state['volcano_comparisons'][comp_key]['significant_up'] = set(volcano_data[significant_up]['Gene Name'])
+                                        st.session_state['volcano_comparisons'][comp_key]['significant_down'] = set(volcano_data[significant_down]['Gene Name'])
+
+                                        # Add protein search below plot
+
 
                                         # Display detailed results for found proteins if search was performed
                                         if search_protein:
@@ -628,34 +648,6 @@ if uploaded_files:
                                                     st.write("---")
                                             else:
                                                 st.warning(f"No proteins found matching '{search_protein}'")
-
-                                        # Download buttons
-                                        col1, col2, col3 = st.columns(3)
-                                        with col1:
-                                            html_buffer = fig.to_html()
-                                            st.download_button(
-                                                label="Download Plot as HTML",
-                                                data=html_buffer,
-                                                file_name=f"volcano_plot_{group2}_vs_{group1}.html",
-                                                mime="text/html"
-                                            )
-                                        with col2:
-                                            # Save as SVG
-                                            svg_buffer = fig.to_image(format="svg")
-                                            st.download_button(
-                                                label="Download Plot as SVG",
-                                                data=svg_buffer,
-                                                file_name=f"volcano_plot_{group2}_vs_{group1}.svg",
-                                                mime="image/svg+xml"
-                                            )
-                                        with col3:
-                                            csv_buffer = volcano_data.to_csv(index=True)
-                                            st.download_button(
-                                                label="Download Results as CSV",
-                                                data=csv_buffer,
-                                                file_name=f"volcano_results_{group2}_vs_{group1}.csv",
-                                                mime="text/csv"
-                                            )
 
                                 except Exception as e:
                                     st.error(f"Error generating volcano plot: {str(e)}")
@@ -745,8 +737,7 @@ if uploaded_files:
                                         file_name="upset_plot_downregulated.svg",
                                         mime="image/svg+xml"
                                     )
-                                with col2:
-                                    # Create protein list with group memberships
+                                with col2:                                    # Create protein list with group memberships
                                     protein_data = []
                                     all_proteins = set().union(*down_sets.values())
                                     for protein in all_proteins:
