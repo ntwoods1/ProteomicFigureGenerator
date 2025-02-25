@@ -17,6 +17,7 @@ from utils.data_processing import (
     normalize_data,
     filter_by_peptide_count  
 )
+from itertools import combinations
 
 # Set page configuration
 st.set_page_config(
@@ -32,6 +33,8 @@ if 'cv_results' not in st.session_state:
     st.session_state['cv_results'] = {}
 if 'dataset_structures' not in st.session_state:
     st.session_state['dataset_structures'] = {}
+if 'volcano_comparisons' not in st.session_state:
+    st.session_state['volcano_comparisons'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -464,7 +467,6 @@ if uploaded_files:
             if dataset_name in st.session_state['dataset_structures']:
                 structure = st.session_state['dataset_structures'][dataset_name]
             else:
-                # If structure not in session state, regenerate it
                 try:
                     structure = analyze_dataset_structure(selected_data)
                     st.session_state['dataset_structures'][dataset_name] = structure
@@ -477,180 +479,212 @@ if uploaded_files:
                 all_groups = list(structure["replicates"].keys())
 
                 if all_groups:
-                    # Group selection for comparison
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        group1 = st.selectbox(
-                            "Select first group",
-                            options=all_groups,
-                            key="volcano_group1"
-                        )
-                    with col2:
-                        remaining_groups = [g for g in all_groups if g != group1] if group1 else all_groups
-                        group2 = st.selectbox(
-                            "Select second group",
-                            options=remaining_groups,
-                            key="volcano_group2"
-                        )
+                    # Add new comparison button
+                    if st.button("Add New Comparison"):
+                        comparison_key = f"comparison_{len(st.session_state['volcano_comparisons'])}"
+                        st.session_state['volcano_comparisons'][comparison_key] = {
+                            'group1': None,
+                            'group2': None,
+                            'significant_up': set(),
+                            'significant_down': set()
+                        }
 
-                    if group1 and group2:
-                        try:
-                            # Get the quantity columns for each group
-                            group1_cols = [col for col in structure["replicates"][group1] if col.endswith("PG.Quantity")]
-                            group2_cols = [col for col in structure["replicates"][group2] if col.endswith("PG.Quantity")]
-
-                            if group1_cols and group2_cols:
-                                # Calculate fold change and p-values
-                                group1_data = selected_data[group1_cols]
-                                group2_data = selected_data[group2_cols]
-
-                                # Calculate log2 fold change
-                                log2fc = np.log2(group2_data.mean(axis=1) / group1_data.mean(axis=1))
-
-                                # Calculate p-values using t-test
-                                p_values = []
-                                for idx in selected_data.index:
-                                    g1_values = group1_data.loc[idx].dropna()
-                                    g2_values = group2_data.loc[idx].dropna()
-                                    if len(g1_values) >= 2 and len(g2_values) >= 2:
-                                        _, p_val = ttest_ind(g1_values, g2_values)
-                                        p_values.append(p_val)
-                                    else:
-                                        p_values.append(np.nan)
-
-                                # Create DataFrame for volcano plot
-                                volcano_data = pd.DataFrame({
-                                    'log2FoldChange': log2fc,
-                                    '-log10(p-value)': -np.log10(p_values),
-                                    'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index,
-                                    'Description': selected_data['Description'] if 'Description' in selected_data.columns else '',
-                                    'Mean1': group1_data.mean(axis=1),
-                                    'Mean2': group2_data.mean(axis=1)
-                                })
-                                volcano_data = volcano_data.replace([np.inf, -np.inf], np.nan).dropna()
-
-                                # Significance thresholds
-                                pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1)
-                                log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1)
-
-                                # Plot appearance options
-                                st.sidebar.subheader("Plot Options")
-                                plot_bg_color = st.sidebar.selectbox(
-                                    "Plot background color",
-                                    options=["white", "black", "transparent"],
-                                    index=0
+                    # Display all comparisons
+                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                        with st.expander(f"Volcano Plot - {comp_key}", expanded=True):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                group1 = st.selectbox(
+                                    "Select first group",
+                                    options=all_groups,
+                                    key=f"{comp_key}_group1"
+                                )
+                            with col2:
+                                remaining_groups = [g for g in all_groups if g != group1] if group1 else all_groups
+                                group2 = st.selectbox(
+                                    "Select second group",
+                                    options=remaining_groups,
+                                    key=f"{comp_key}_group2"
                                 )
 
-                                # Generate interactive volcano plot
-                                fig = px.scatter(
-                                    volcano_data,
-                                    x='log2FoldChange',
-                                    y='-log10(p-value)',
-                                    hover_name=volcano_data['Gene Name'],
-                                    hover_data={
-                                        'log2FoldChange': ':.2f',
-                                        '-log10(p-value)': ':.2f',
-                                        'Mean1': ':.2f',
-                                        'Mean2': ':.2f'
-                                    },
-                                    title=f"Volcano Plot: {group2} vs {group1}"
-                                )
+                            if group1 and group2:
+                                try:
+                                    # Get the quantity columns for each group
+                                    group1_cols = [col for col in structure["replicates"][group1] if col.endswith("PG.Quantity")]
+                                    group2_cols = [col for col in structure["replicates"][group2] if col.endswith("PG.Quantity")]
 
-                                # Add cutoff lines
-                                fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
-                                fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
-                                fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
+                                    if group1_cols and group2_cols:
+                                        # Calculate fold change and p-values
+                                        group1_data = selected_data[group1_cols]
+                                        group2_data = selected_data[group2_cols]
 
-                                # Color points based on significance
-                                significant = (volcano_data['-log10(p-value)'] >= pval_cutoff) & \
-                                            (abs(volcano_data['log2FoldChange']) >= log2fc_cutoff)
-                                base_colors = significant.map({True: 'red', False: 'gray'})
+                                        # Calculate log2 fold change
+                                        log2fc = np.log2(group2_data.mean(axis=1) / group1_data.mean(axis=1))
 
-                                # Add protein search below plot
-                                search_protein = st.text_input(
-                                    "Search for protein (Gene Name or Description)",
-                                    help="Enter protein name to highlight in the plot"
-                                )
+                                        # Calculate p-values using t-test
+                                        p_values = []
+                                        for idx in selected_data.index:
+                                            g1_values = group1_data.loc[idx].dropna()
+                                            g2_values = group2_data.loc[idx].dropna()
+                                            if len(g1_values) >= 2 and len(g2_values) >= 2:
+                                                _, p_val = ttest_ind(g1_values, g2_values)
+                                                p_values.append(p_val)
+                                            else:
+                                                p_values.append(np.nan)
 
-                                # Update plot colors based on search
-                                if search_protein:
-                                    # Search in both Gene Name and Description
-                                    search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
-                                    if 'Description' in volcano_data.columns:
-                                        search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
+                                        # Create DataFrame for volcano plot
+                                        volcano_data = pd.DataFrame({
+                                            'log2FoldChange': log2fc,
+                                            '-log10(p-value)': -np.log10(p_values),
+                                            'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index,
+                                            'Description': selected_data['Description'] if 'Description' in selected_data.columns else '',
+                                            'Mean1': group1_data.mean(axis=1),
+                                            'Mean2': group2_data.mean(axis=1)
+                                        })
+                                        volcano_data = volcano_data.replace([np.inf, -np.inf], np.nan).dropna()
 
-                                    # Update colors for searched proteins
-                                    marker_colors = base_colors.copy()
-                                    marker_colors[search_mask] = 'yellow'
-                                    marker_sizes = [15 if h else 8 for h in search_mask]
-                                else:
-                                    marker_colors = base_colors
-                                    marker_sizes = [8] * len(volcano_data)
+                                        # Significance thresholds
+                                        pval_cutoff = st.slider("-log10(p-value) cutoff", 0.0, 10.0, 1.3, 0.1, key=f"{comp_key}_pval")
+                                        log2fc_cutoff = st.slider("Log2 Fold Change cutoff", 0.0, 5.0, 1.0, 0.1, key=f"{comp_key}_fc")
 
-                                # Update plot markers
-                                fig.update_traces(
-                                    marker=dict(
-                                        color=marker_colors,
-                                        size=marker_sizes
-                                    )
-                                )
+                                        # Generate interactive volcano plot
+                                        fig = px.scatter(
+                                            volcano_data,
+                                            x='log2FoldChange',
+                                            y='-log10(p-value)',
+                                            hover_name=volcano_data['Gene Name'],
+                                            hover_data={
+                                                'log2FoldChange': ':.2f',
+                                                '-log10(p-value)': ':.2f',
+                                                'Mean1': ':.2f',
+                                                'Mean2': ':.2f'
+                                            },
+                                            title=f"Volcano Plot: {group2} vs {group1}"
+                                        )
 
-                                # Display plot
-                                st.plotly_chart(fig, use_container_width=True)
+                                        # Add cutoff lines
+                                        fig.add_hline(y=pval_cutoff, line_dash="dash", line_color="red")
+                                        fig.add_vline(x=log2fc_cutoff, line_dash="dash", line_color="blue")
+                                        fig.add_vline(x=-log2fc_cutoff, line_dash="dash", line_color="blue")
 
-                                # Display detailed results for found proteins if search was performed
-                                if search_protein:
-                                    found_proteins = volcano_data[search_mask]
-                                    if not found_proteins.empty:
-                                        st.write("### Search Results")
-                                        for idx, row in found_proteins.iterrows():
-                                            st.write(f"**Gene:** {row['Gene Name']}")
-                                            if 'Description' in row:
-                                                st.write(f"**Description:** {row['Description']}")
-                                            st.write(f"**Expression:**")
-                                            st.write(f"- {group1}: {row['Mean1']:.2f}")
-                                            st.write(f"- {group2}: {row['Mean2']:.2f}")
-                                            st.write(f"**Log2 Fold Change:** {row['log2FoldChange']:.2f}")
-                                            st.write(f"**-log10(p-value):** {row['-log10(p-value)']:.2f}")
-                                            st.write("---")
-                                    else:
-                                        st.warning(f"No proteins found matching '{search_protein}'")
+                                        # Color points based on significance
+                                        significant = (volcano_data['-log10(p-value)'] >= pval_cutoff)
+                                        significant_up = significant & (volcano_data['log2FoldChange'] >= log2fc_cutoff)
+                                        significant_down = significant & (volcano_data['log2FoldChange'] <= -log2fc_cutoff)
 
-                                # Add download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Download plot as HTML
-                                    html_buffer = fig.to_html()
-                                    st.download_button(
-                                        label="Download Plot as HTML",
-                                        data=html_buffer,
-                                        file_name=f"volcano_plot_{group2}_vs_{group1}.html",
-                                        mime="text/html"
-                                    )
+                                        # Store significant proteins
+                                        st.session_state['volcano_comparisons'][comp_key]['significant_up'] = set(volcano_data[significant_up]['Gene Name'])
+                                        st.session_state['volcano_comparisons'][comp_key]['significant_down'] = set(volcano_data[significant_down]['Gene Name'])
 
-                                with col2:
-                                    # Download results as CSV
-                                    csv_buffer = volcano_data.to_csv(index=True)
-                                    st.download_button(
-                                        label="Download Results as CSV",
-                                        data=csv_buffer,
-                                        file_name=f"volcano_results_{group2}_vs_{group1}.csv",
-                                        mime="text/csv"
-                                    )
+                                        # Add protein search below plot
+                                        search_protein = st.text_input(
+                                            "Search for protein (Gene Name or Description)",
+                                            help="Enter protein name to highlight in the plot",
+                                            key=f"{comp_key}_search"
+                                        )
 
-                                # Display summary statistics
-                                total_proteins = len(volcano_data)
-                                sig_proteins = significant.sum()
-                                st.write(f"Total proteins analyzed: {total_proteins}")
-                                st.write(f"Significantly different proteins: {sig_proteins}")
-                                st.write(f"Percentage significant: {(sig_proteins/total_proteins*100):.1f}%")
+                                        # Update plot colors based on search
+                                        if search_protein:
+                                            search_mask = volcano_data['Gene Name'].str.contains(search_protein, case=False, na=False)
+                                            if 'Description' in volcano_data.columns:
+                                                search_mask |= volcano_data['Description'].str.contains(search_protein, case=False, na=False)
 
-                            else:
-                                st.warning("Selected groups don't have quantitative data for comparison")
-                        except Exception as e:
-                            st.error(f"Error generating volcano plot: {str(e)}")
-                    else:
-                        st.warning("No replicate groups found in the dataset")
+                                            marker_colors = ['red' if up else 'blue' if down else 'gray' 
+                                                           for up, down in zip(significant_up, significant_down)]
+                                            marker_colors = [color if not mask else 'yellow' 
+                                                           for color, mask in zip(marker_colors, search_mask)]
+                                            marker_sizes = [15 if m else 8 for m in search_mask]
+                                        else:
+                                            marker_colors = ['red' if up else 'blue' if down else 'gray' 
+                                                           for up, down in zip(significant_up, significant_down)]
+                                            marker_sizes = [8] * len(volcano_data)
+
+                                        # Update plot markers
+                                        fig.update_traces(
+                                            marker=dict(
+                                                color=marker_colors,
+                                                size=marker_sizes
+                                            )
+                                        )
+
+                                        # Display plot
+                                        st.plotly_chart(fig, use_container_width=True)
+
+                                        # Display detailed results for found proteins if search was performed
+                                        if search_protein:
+                                            found_proteins = volcano_data[search_mask]
+                                            if not found_proteins.empty:
+                                                st.write("### Search Results")
+                                                for idx, row in found_proteins.iterrows():
+                                                    st.write(f"**Gene:** {row['Gene Name']}")
+                                                    if 'Description' in row:
+                                                        st.write(f"**Description:** {row['Description']}")
+                                                    st.write(f"**Expression:**")
+                                                    st.write(f"- {group1}: {row['Mean1']:.2f}")
+                                                    st.write(f"- {group2}: {row['Mean2']:.2f}")
+                                                    st.write(f"**Log2 Fold Change:** {row['log2FoldChange']:.2f}")
+                                                    st.write(f"**-log10(p-value):** {row['-log10(p-value)']:.2f}")
+                                                    st.write("---")
+                                            else:
+                                                st.warning(f"No proteins found matching '{search_protein}'")
+
+                                        # Download buttons
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            html_buffer = fig.to_html()
+                                            st.download_button(
+                                                label="Download Plot as HTML",
+                                                data=html_buffer,
+                                                file_name=f"volcano_plot_{group2}_vs_{group1}.html",
+                                                mime="text/html"
+                                            )
+                                        with col2:
+                                            csv_buffer = volcano_data.to_csv(index=True)
+                                            st.download_button(
+                                                label="Download Results as CSV",
+                                                data=csv_buffer,
+                                                file_name=f"volcano_results_{group2}_vs_{group1}.csv",
+                                                mime="text/csv"
+                                            )
+
+                                        # Add UpSet plot if we have multiple comparisons
+                                        try:
+                                            if len(st.session_state['volcano_comparisons']) > 1:
+                                                st.header("Overlap Analysis")
+
+                                                # Create sets for up and down regulated proteins
+                                                up_regulated_sets = {
+                                                    f"{comp_key}_up": comp_data['significant_up']
+                                                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items()
+                                                    if comp_data['significant_up']
+                                                }
+
+                                                down_regulated_sets = {
+                                                    f"{comp_key}_down": comp_data['significant_down']
+                                                    for comp_key, comp_data in st.session_state['volcano_comparisons'].items()
+                                                    if comp_data['significant_down']
+                                                }
+
+                                                # Create UpSet plots
+                                                if up_regulated_sets:
+                                                    st.subheader("Up-regulated Proteins Overlap")
+                                                    fig_up = plt.figure(figsize=(10, 6))
+                                                    UpSet(from_contents(up_regulated_sets), min_subset_size=1).plot()
+                                                    st.pyplot(fig_up)
+
+                                                if down_regulated_sets:
+                                                    st.subheader("Down-regulated Proteins Overlap")
+                                                    fig_down = plt.figure(figsize=(10, 6))
+                                                    UpSet(from_contents(down_regulated_sets), min_subset_size=1).plot()
+                                                    st.pyplot(fig_down)
+                                        except Exception as e:
+                                            st.error(f"Error generating overlap analysis: {str(e)}")
+
+                                except Exception as e:
+                                    st.error(f"Error generating volcano plot: {str(e)}")
+
+                else:
+                    st.warning("No replicate groups found in the dataset")
             else:
                 st.error("Dataset structure information not found")
         else:
@@ -711,8 +745,7 @@ if uploaded_files:
         dataset_name = st.selectbox(
             "Select dataset for heat map",
             options=list(datasets.keys()),
-            key="heatmap_dataset"
-        )
+            key="heatmap_dataset"        )
 
         if dataset_name:
             data = datasets[dataset_name]['normalized']
