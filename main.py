@@ -647,50 +647,49 @@ if uploaded_files:
                                                 mime="text/csv"
                                             )
 
-                                        # Add UpSet plot if we have multiple comparisons
-                                        if len(st.session_state['volcano_comparisons']) > 1:
-                                            st.header("Overlap Analysis")
-
-                                            try:
-                                                # Create dictionaries of lists for the UpSet plots
-                                                up_sets = {}
-                                                down_sets = {}
-
-                                                # Convert sets to lists for each comparison
-                                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                    if comp_data['significant_up']:
-                                                        up_sets[comp_key] = list(comp_data['significant_up'])
-                                                    if comp_data['significant_down']:
-                                                        down_sets[comp_key] = list(comp_data['significant_down'])
-
-                                                # Generate UpSet plots if we have data
-                                                if up_sets:
-                                                    try:
-                                                        st.subheader("Up-regulated Proteins Overlap")
-                                                        fig_up = plt.figure(figsize=(12, 6))
-                                                        data_up = from_contents(up_sets)
-                                                        UpSet(data_up, min_subset_size=1).plot()
-                                                        st.pyplot(fig_up)
-                                                        plt.close(fig_up)
-                                                    except Exception as e:
-                                                        st.error(f"Error generating up-regulated overlap plot: {str(e)}")
-
-                                                if down_sets:
-                                                    try:
-                                                        st.subheader("Down-regulated Proteins Overlap")
-                                                        fig_down = plt.figure(figsize=(12, 6))
-                                                        data_down = from_contents(down_sets)
-                                                        UpSet(data_down, min_subset_size=1).plot()
-                                                        st.pyplot(fig_down)
-                                                        plt.close(fig_down)
-                                                    except Exception as e:
-                                                        st.error(f"Error generating down-regulated overlap plot: {str(e)}")
-
-                                            except Exception as e:
-                                                st.error(f"Error preparing overlap analysis data: {str(e)}")
-
                                 except Exception as e:
                                     st.error(f"Error generating volcano plot: {str(e)}")
+
+                    # Add UpSet plot after all comparisons
+                    if len(st.session_state['volcano_comparisons']) > 1:
+                        st.markdown("---")  # Visual separator
+                        st.header("Overlap Analysis")
+
+                        try:
+                            # Create dictionaries for storing gene sets
+                            up_sets = {}
+                            down_sets = {}
+
+                            # Collect genes from all comparisons
+                            for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                if comp_data['significant_up']:
+                                    up_sets[comp_key] = list(comp_data['significant_up'])
+                                if comp_data['significant_down']:
+                                    down_sets[comp_key] = list(comp_data['significant_down'])
+
+                            # Generate overlaps visualizations
+                            if up_sets:
+                                st.subheader("Up-regulated Proteins")
+                                st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
+
+                                fig_up = plt.figure(figsize=(12, 6))
+                                upset = UpSet(from_contents(up_sets))  # Use default parameters
+                                upset.plot(fig=fig_up)
+                                st.pyplot(fig_up)
+                                plt.close(fig_up)
+
+                            if down_sets:
+                                st.subheader("Down-regulated Proteins")
+                                st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
+
+                                fig_down = plt.figure(figsize=(12, 6))
+                                upset = UpSet(from_contents(down_sets))  # Use default parameters
+                                upset.plot(fig=fig_down)
+                                st.pyplot(fig_down)
+                                plt.close(fig_down)
+
+                        except Exception as e:
+                            st.error(f"Error generating overlap analysis: {str(e)}")
 
                 else:
                     st.warning("No replicate groups found in the dataset")
@@ -707,39 +706,41 @@ if uploaded_files:
         st.header("Principal Component Analysis")
         dataset_name = st.selectbox(
             "Select dataset for PCA",
-            options=list(datasets.keys()),            key="pca_dataset"
+            options=list(datasets.keys()),
+            key="pca_dataset"
         )
 
         if dataset_name:
             data = datasets[dataset_name]['normalized']
             numeric_cols = data.select_dtypes(include=[np.number]).columns
 
-            selectedcolumns = st.multiselect(
+            selected_columns = st.multiselect(
                 "Select columns for PCA",
                 options=numeric_cols,
                 default=numeric_cols[:3] if len(numeric_cols) > 2 else numeric_cols
             )
 
-            if len(selectedcolumns) >= 2:
+            if len(selected_columns) >= 2:
                 try:
-                    X = data[selectedcolumns].dropna()
+                    X = data[selected_columns].dropna()
                     if not X.empty:
                         pca = PCA()
                         X_pca = pca.fit_transform(X)
 
-                        # Create PCA plot
+                        # Create DataFrame for plotting
                         pca_df = pd.DataFrame(
                             X_pca[:, :2],
                             columns=['PC1', 'PC2']
                         )
 
+                        # Create interactive scatter plot
                         fig = px.scatter(
                             pca_df,
                             x='PC1',
                             y='PC2',
                             title='PCA Plot',
                             labels={
-                                'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
+                                'PC1': f'PC1({pca.explained_variance_ratio_[0]:.2%})',
                                 'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
                             }
                         )
@@ -747,7 +748,6 @@ if uploaded_files:
 
                 except Exception as e:
                     st.error(f"Error performing PCA: {e}")
-
             else:
                 st.warning("Please select at least 2 columns for PCA")
 
