@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
-from upsetplot import from_memberships, UpSet
+from upsetplot import from_memberships, UpSet, from_contents
 import tempfile
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
@@ -648,61 +648,46 @@ if uploaded_files:
                                             )
 
                                         # Add UpSet plot if we have multiple comparisons
-                                        try:
-                                            if len(st.session_state['volcano_comparisons']) > 1:
-                                                st.header("Overlap Analysis")
+                                        if len(st.session_state['volcano_comparisons']) > 1:
+                                            st.header("Overlap Analysis")
 
-                                                try:
-                                                    # Create membership lists for upsetplot
-                                                    up_members = []
-                                                    down_members = []
+                                            try:
+                                                # Create dictionaries of lists for the UpSet plots
+                                                up_sets = {}
+                                                down_sets = {}
 
-                                                    # Collect all proteins
-                                                    all_proteins_up = set()
-                                                    all_proteins_down = set()
-                                                    for comp_data in st.session_state['volcano_comparisons'].values():
-                                                        all_proteins_up.update(comp_data['significant_up'])
-                                                        all_proteins_down.update(comp_data['significant_down'])
+                                                # Convert sets to lists for each comparison
+                                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                                    if comp_data['significant_up']:
+                                                        up_sets[comp_key] = list(comp_data['significant_up'])
+                                                    if comp_data['significant_down']:
+                                                        down_sets[comp_key] = list(comp_data['significant_down'])
 
-                                                    # Create membership data
-                                                    for protein in all_proteins_up:
-                                                        membership = []
-                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                            if protein in comp_data['significant_up']:
-                                                                membership.append(comp_key)
-                                                        if membership:  # Only add if protein belongs to at least one set
-                                                            up_members.append(membership)
-
-                                                    for protein in all_proteins_down:
-                                                        membership = []
-                                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                                            if protein in comp_data['significant_down']:
-                                                                membership.append(comp_key)
-                                                        if membership:  # Only add if protein belongs to at least one set
-                                                            down_members.append(membership)
-
-                                                    # Generate UpSet plots
-                                                    if up_members:
+                                                # Generate UpSet plots if we have data
+                                                if up_sets:
+                                                    try:
                                                         st.subheader("Up-regulated Proteins Overlap")
                                                         fig_up = plt.figure(figsize=(12, 6))
-                                                        upset = from_memberships(up_members)
-                                                        UpSet(upset, show_counts=True).plot()
+                                                        data_up = from_contents(up_sets)
+                                                        UpSet(data_up, min_subset_size=1).plot()
                                                         st.pyplot(fig_up)
                                                         plt.close(fig_up)
+                                                    except Exception as e:
+                                                        st.error(f"Error generating up-regulated overlap plot: {str(e)}")
 
-                                                    if down_members:
+                                                if down_sets:
+                                                    try:
                                                         st.subheader("Down-regulated Proteins Overlap")
                                                         fig_down = plt.figure(figsize=(12, 6))
-                                                        upset = from_memberships(down_members)
-                                                        UpSet(upset, show_counts=True).plot()
+                                                        data_down = from_contents(down_sets)
+                                                        UpSet(data_down, min_subset_size=1).plot()
                                                         st.pyplot(fig_down)
                                                         plt.close(fig_down)
+                                                    except Exception as e:
+                                                        st.error(f"Error generating down-regulated overlap plot: {str(e)}")
 
-                                                except Exception as e:
-                                                    st.error(f"Error generating overlap analysis: {str(e)}")
-
-                                        except Exception as e:
-                                            st.error(f"Error generating overlap analysis: {str(e)}")
+                                            except Exception as e:
+                                                st.error(f"Error preparing overlap analysis data: {str(e)}")
 
                                 except Exception as e:
                                     st.error(f"Error generating volcano plot: {str(e)}")
