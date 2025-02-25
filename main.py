@@ -665,9 +665,18 @@ if uploaded_files:
                                         ax.grid(True, alpha=0.3)
 
                                         # Download buttons
-                                        col1, col2 = st.columns(2)
+                                        col1, col2, col3 = st.columns(3)
                                         with col1:
-                                            # Save SVG
+                                            # Download HTML (Interactive Plotly)
+                                            html_buffer = fig_plotly.to_html()
+                                            st.download_button(
+                                                label="Download Interactive Plot (HTML)",
+                                                data=html_buffer,
+                                                file_name=f"volcano_plot_{group2}_vs_{group1}.html",
+                                                mime="text/html"
+                                            )
+                                        with col2:
+                                            # Save SVG (Static matplotlib)
                                             buffer = io.BytesIO()
                                             fig_mpl.savefig(buffer, format='svg', bbox_inches='tight')
                                             buffer.seek(0)
@@ -677,7 +686,7 @@ if uploaded_files:
                                                 file_name=f"volcano_plot_{group2}_vs_{group1}.svg",
                                                 mime="image/svg+xml"
                                             )
-                                        with col2:
+                                        with col3:
                                             csv_buffer = volcano_data.to_csv(index=True)
                                             st.download_button(
                                                 label="Download Results as CSV",
@@ -685,6 +694,7 @@ if uploaded_files:
                                                 file_name=f"volcano_data_{group2}_vs_{group1}.csv",
                                                 mime="text/csv"
                                             )
+
                                         plt.close(fig_mpl)
 
                                         # Store significant proteins
