@@ -729,7 +729,7 @@ if uploaded_files:
                         st.header("Overlap Analysis")
 
                         try:
-                            # Create dictionaries for storing gene sets
+                            # Create dictionaries for storing genesets
                             up_sets = {}
                             down_sets = {}
 
@@ -853,7 +853,17 @@ if uploaded_files:
 
         if dataset_name:
             data = datasets[dataset_name]['normalized']
-            structure = dataset_structures[dataset_name]
+
+            # Ensure we have the dataset structure
+            try:
+                if dataset_name in st.session_state['dataset_structures']:
+                    structure = st.session_state['dataset_structures'][dataset_name]
+                else:
+                    structure = analyze_dataset_structure(data)
+                    st.session_state['dataset_structures'][dataset_name] = structure
+            except Exception as e:
+                st.error(f"Error analyzing dataset structure: {str(e)}")
+                st.stop()
 
             # Get replicate groups
             replicate_groups = list(structure["replicates"].keys())
@@ -877,9 +887,12 @@ if uploaded_files:
 
                 # Get columns for selected groups
                 selected_columns = []
+                group_to_columns = {}  # Map to track which columns belong to which group
                 for group in selected_groups:
-                    selected_columns.extend([col for col in structure["replicates"][group] 
-                                          if col.endswith("PG.Quantity")])
+                    group_cols = [col for col in structure["replicates"][group] 
+                                if col.endswith("PG.Quantity")]
+                    selected_columns.extend(group_cols)
+                    group_to_columns[group] = group_cols
 
                 if len(selected_columns) >= 2:
                     try:
@@ -955,11 +968,11 @@ if uploaded_files:
                             st.dataframe(explained_var_df)
 
                     except Exception as e:
-                        st.error(f"Error performing PCA: {e}")
+                        st.error(f"Error performing PCA: {str(e)}")
+                    else:
+                        st.warning("Please select groups with at least 2 quantity columns for PCA")
                 else:
-                    st.warning("Please select at least 2 columns for PCA")
-            else:
-                st.warning("Please select at least one replicate group")
+                    st.warning("Please select at least one replicate group")
 
     # Heat Map Tab
     with tab4:
