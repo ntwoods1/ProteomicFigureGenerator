@@ -36,6 +36,12 @@ if 'dataset_structures' not in st.session_state:
     st.session_state['dataset_structures'] = {}
 if 'volcano_comparisons' not in st.session_state:
     st.session_state['volcano_comparisons'] = {}
+if 'active_tab' not in st.session_state:
+    st.session_state['active_tab'] = 0
+if 'filtering_stats' not in st.session_state:
+    st.session_state['filtering_stats'] = {}
+if 'pca_selections' not in st.session_state:
+    st.session_state['pca_selections'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -304,28 +310,21 @@ if uploaded_files:
             progress_bar.progress(95)
 
             # Store the processed data
-            processed_data = {
-                'original': data.copy(),
-                'peptide_filtered': peptide_filtered_data,
-                'valid_filtered': filtered_data,
-                'cv_filtered': final_filtered_data,
-                'normalized': normalized_data,
-                'stats': {
-                    'original_count': len(data),
-                    'peptide_filtered_count': len(peptide_filtered_data),
-                    'valid_filtered_count': len(filtered_data),
-                    'cv_filtered_count': len(final_filtered_data),
-                    'final_count': len(normalized_data),
-                    'peptide_stats': peptide_stats,
-                    'filter_params': {
-                        'min_peptides': min_peptides,
-                        'min_valid_values': min_valid_values,
-                        'filter_by_group': filter_by_group,
-                        'cv_threshold': cv_threshold
-                    }
+            processed_data['stats'] = {
+                'original_count': len(data),
+                'peptide_filtered_count': len(peptide_filtered_data),
+                'valid_filtered_count': len(filtered_data),
+                'cv_filtered_count': len(final_filtered_data),
+                'final_count': len(normalized_data),
+                'peptide_stats': peptide_stats,
+                'filter_params': {
+                    'min_peptides': min_peptides,
+                    'min_valid_values': min_valid_values,
+                    'filter_by_group': filter_by_group,
+                    'cv_threshold': cv_threshold
                 }
             }
-
+            st.session_state['filtering_stats'][uploaded_file.name] = processed_data['stats']
 
             datasets[uploaded_file.name] = processed_data
             dataset_structures[uploaded_file.name] = structure
@@ -343,10 +342,12 @@ if uploaded_files:
             continue
 
     # Display tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Data Overview", "Volcano Plot", "PCA", "Heat Map"])
+    tabs = ["Data Overview", "Volcano Plot", "PCA", "Heat Map"]
+    active_tab = st.radio("Select Analysis", tabs, horizontal=True, key="analysis_tabs", index=st.session_state['active_tab'])
+    st.session_state['active_tab'] = tabs.index(active_tab)
 
-    # Data Overview Tab
-    with tab1:
+    # Display appropriate content based on active tab
+    if active_tab == "Data Overview":
         st.header("Data Overview")
         dataset_name = st.selectbox(
             "Select a dataset to view",
@@ -449,8 +450,7 @@ if uploaded_files:
             st.subheader("Basic Statistics")
             st.write(final_data.describe())
 
-    # Volcano Plot Tab
-    with tab2:
+    elif active_tab == "Volcano Plot":
         st.header("Volcano Plot")
 
         # Dataset selection with default empty option
@@ -576,7 +576,7 @@ if uploaded_files:
 
                                         # Create color array
                                         marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                           for up, down in zip(significant_up, significant_down)]
+                                                            for up, down in zip(significant_up, significant_down)]
 
                                         # Add protein labels input
                                         proteins_to_label = st.text_area(
@@ -842,9 +842,8 @@ if uploaded_files:
             else:
                 st.info("Please select a dataset to create a volcano plot")
 
-    # PCA Tab
-    with tab3:
-        st.header("Principal Component Analysis")
+    elif active_tab == "PCA":
+        st.header("PCA Analysis")
         dataset_name = st.selectbox(
             "Select dataset for PCA",
             options=list(datasets.keys()),
@@ -1077,6 +1076,12 @@ if uploaded_files:
 
                             plt.close(fig_mpl)
 
+                            # Store current PCA selections
+                            st.session_state['pca_selections'][dataset_name] = {
+                                'selected_groups': selected_groups,
+                                'group_names': group_names
+                            }
+
                             # Display explained variance ratios
                             st.write("### Explained Variance Ratios")
                             explained_var_df = pd.DataFrame({
@@ -1093,8 +1098,7 @@ if uploaded_files:
                 else:
                     st.warning("Please select at least one replicate group")
 
-    # Heat Map Tab
-    with tab4:
+    elif active_tab == "Heat Map":
         st.header("Heat Map")
         dataset_name = st.selectbox(
             "Select dataset for heat map",
