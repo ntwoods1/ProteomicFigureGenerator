@@ -192,9 +192,10 @@ if uploaded_files:
             processed_data = {
                 'original': data.copy(),
                 'peptide_filtered': None,
+                'valid_filtered': None,
                 'cv_filtered': None,
-                'missing_handled': None,
-                'normalized': None
+                'normalized': None,
+                'stats': {}
             }
 
             # 1. Filter by peptide count
@@ -230,19 +231,8 @@ if uploaded_files:
                 valid_mask = valid_counts >= (len(quantity_cols) * min_valid_values/100)
                 filtered_data = peptide_filtered_data[valid_mask].copy()
 
+            processed_data['valid_filtered'] = filtered_data
             progress_bar.progress(50)
-
-            # Add filtering statistics with more detail
-            n_after_peptide = len(peptide_filtered_data)
-            n_after_valid = len(filtered_data)
-            st.write("Valid values filter statistics:")
-            st.write(f"- Proteins before filter: {n_after_peptide}")
-            st.write(f"- Proteins after filter: {n_after_valid}")
-            st.write(f"- Proteins removed: {n_after_peptide - n_after_valid}")
-            if filter_by_group:
-                st.write("(Filtering applied within each replicate group)")
-            else:
-                st.write(f"(Global filtering across all {len(quantity_cols)} quantity columns)")
 
 
             # 4. Apply CV threshold filter
@@ -309,7 +299,7 @@ if uploaded_files:
             processed_data['normalized'] = normalized_data
             progress_bar.progress(95)
 
-            # Store the processed data
+            # Store the processed data with updated stats
             processed_data['stats'] = {
                 'original_count': len(data),
                 'peptide_filtered_count': len(peptide_filtered_data),
