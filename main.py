@@ -725,11 +725,12 @@ if uploaded_files:
 
                     # Add UpSet plot after all comparisons
                     if len(st.session_state['volcano_comparisons']) > 1:
-                        st.markdown("---")  # Visual separator                        st.header("Overlap Analysis")
+                        st.markdown("---")  # Visual separator
+                        st.header("Overlap Analysis")
 
                         try:
-                            # Create dictionaries for storing genesets
-                            up_sets= {}
+                            # Create dictionaries for storing gene sets
+                            up_sets = {}
                             down_sets = {}
 
                             # Collect genes from all comparisons
@@ -739,94 +740,21 @@ if uploaded_files:
                                 if comp_data['significant_down']:
                                     down_sets[comp_key] = list(comp_data['significant_down'])
 
-                            # Generate overlaps visualizations
                             if up_sets:
-                                st.subheader("Up-regulated Proteins")
-                                st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
-
-                                # Create figure
-                                fig_up = plt.figure(figsize=(12, 6))
+                                st.subheader("Upregulated Genes Overlap")
                                 upset = UpSet(from_contents(up_sets))
-                                upset.plot(fig=fig_up)
-                                st.pyplot(fig_up)
-
-                                # Create download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Save SVG
-                                    buffer = io.BytesIO()
-                                    fig_up.savefig(buffer, format='svg', bbox_inches='tight')
-                                    buffer.seek(0)
-                                    st.download_button(
-                                        label="Download Plot as SVG",
-                                        data=buffer,
-                                        file_name="upset_plot_upregulated.svg",
-                                        mime="image/svg+xml"
-                                    )
-                                with col2:
-                                    # Create protein list with group memberships
-                                    protein_data = []
-                                    all_proteins = set().union(*up_sets.values())
-                                    for protein in all_proteins:
-                                        groups = [group for group, proteins in up_sets.items() if protein in proteins]
-                                        protein_data.append({
-                                            'Protein': protein,
-                                            'Groups': ';'.join(groups),
-                                            'Number_of_Groups': len(groups)
-                                        })
-                                    protein_df = pd.DataFrame(protein_data)
-                                    protein_csv = protein_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="Download Protein List",
-                                        data=protein_csv,
-                                        file_name="upregulated_proteins.csv",
-                                        mime="text/csv"
-                                    )
-                                plt.close(fig_up)
+                                plt.figure(figsize=(10, 5))
+                                upset.plot()
+                                st.pyplot(plt)
+                                plt.close()
 
                             if down_sets:
-                                st.subheader("Down-regulated Proteins")
-                                st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
-
-                                # Create figure
-                                fig_down = plt.figure(figsize=(12, 6))
+                                st.subheader("Downregulated Genes Overlap")
                                 upset = UpSet(from_contents(down_sets))
-                                upset.plot(fig=fig_down)
-                                st.pyplot(fig_down)
-
-                                # Create download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Save SVG
-                                    buffer = io.BytesIO()
-                                    fig_down.savefig(buffer, format='svg', bbox_inches='tight')
-                                    buffer.seek(0)
-                                    st.download_button(
-                                        label="Download Plot as SVG",
-                                        data=buffer,
-                                        file_name="upset_plot_downregulated.svg",
-                                        mime="image/svg+xml"
-                                    )
-                                with col2:
-                                    # Create protein list with group memberships
-                                    protein_data = []
-                                    all_proteins = set().union(*down_sets.values())
-                                    for protein in all_proteins:
-                                        groups = [group for group, proteins in down_sets.items() if protein in proteins]
-                                        protein_data.append({
-                                            'Protein': protein,
-                                            'Groups': ';'.join(groups),
-                                            'Number_of_Groups': len(groups)
-                                        })
-                                    protein_df = pd.DataFrame(protein_data)
-                                    protein_csv = protein_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="Download Protein List",
-                                        data=protein_csv,
-                                        file_name="downregulated_proteins.csv",
-                                        mime="text/csv"
-                                    )
-                                plt.close(fig_down)
+                                plt.figure(figsize=(10, 5))
+                                upset.plot()
+                                st.pyplot(plt)
+                                plt.close()
 
                         except Exception as e:
                             st.error(f"Error generating overlap analysis: {str(e)}")
@@ -940,94 +868,78 @@ if uploaded_files:
                                     'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
                                     'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
                                 },
-                                template='plotly'  # Use default plotly template to preserve colors
+                                template='plotly_dark'  # Use dark template for black background
                             )
 
                             # Update layout
                             fig_plotly.update_layout(
                                 height=600,
                                 legend_title="Sample Groups",
-                                plot_bgcolor='white',
-                                paper_bgcolor='white'
+                                plot_bgcolor='black',
+                                paper_bgcolor='black',
+                                font=dict(color='white')
                             )
 
                             # Display interactive plot
                             st.plotly_chart(fig_plotly, use_container_width=True)
 
-                            # Create static matplotlib plots for SVG export
-                            fig_mpl = plt.figure(figsize=(20, 8))
-                            # Create a wider right subplot for legend space
-                            gs = fig_mpl.add_gridspec(1, 2, width_ratios=[1, 1.2])
-                            ax1 = fig_mpl.add_subplot(gs[0])
-                            ax2 = fig_mpl.add_subplot(gs[1])
+                            # Create static matplotlib plot for SVG export (score plot only)
+                            fig_mpl = plt.figure(figsize=(12, 8))
+                            ax = fig_mpl.add_subplot(111)
 
                             # Score plot
                             groups = plot_df['Group'].unique()
                             colors = plt.cm.tab10(np.linspace(0, 1, len(groups)))
+
                             for group, color in zip(groups, colors):
                                 mask = plot_df['Group'] == group
-                                ax1.scatter(
-                                    plot_df.loc[mask, 'PC1'],
-                                    plot_df.loc[mask, 'PC2'],
+                                group_data = plot_df[mask]
+
+                                # Plot points
+                                ax.scatter(
+                                    group_data['PC1'],
+                                    group_data['PC2'],
                                     c=[color],
                                     label=group,
                                     alpha=0.7
                                 )
-                                # Remove individual sample labels
 
-                            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
-                            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
-                            ax1.set_title('PCA Score Plot')
-                            ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-                            ax1.grid(True, alpha=0.3)
-
-                            # Loading plot
-                            loadings = pca.components_.T
-                            loading_df = pd.DataFrame(
-                                loadings[:, :2],
-                                columns=['PC1', 'PC2'],
-                                index=pca_input.columns  # Use protein names as index
-                            )
-
-                            # Create arrows for loadings
-                            for i in range(len(loading_df)):
-                                ax2.arrow(
-                                    0, 0,
-                                    loading_df.iloc[i, 0],
-                                    loading_df.iloc[i, 1],
-                                    color='r',
-                                    alpha=0.5
-                                )
-                                if i < 10:  # Only label top 10 loadings for clarity
-                                    ax2.text(
-                                        loading_df.iloc[i, 0] * 1.15,
-                                        loading_df.iloc[i, 1] * 1.15,
-                                        loading_df.index[i],
-                                        color='g',
-                                        ha='center',
-                                        va='center'
+                                # Calculate and plot 95% confidence ellipse
+                                if len(group_data) > 2:  # Need at least 3 points for covariance
+                                    # Calculate the covariance matrix
+                                    cov = np.cov(group_data['PC1'], group_data['PC2'])
+                                    # Calculate the eigenvalues and eigenvectors
+                                    eigenvals, eigenvecs = np.linalg.eig(cov)
+                                    # Calculate the angle
+                                    angle = np.degrees(np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]))
+                                    # Calculate the scale (for 95% confidence)
+                                    chi2_val = 5.991  # 95% confidence for 2 degrees of freedom
+                                    scale_x = np.sqrt(chi2_val * eigenvals[0])
+                                    scale_y = np.sqrt(chi2_val * eigenvals[1])
+                                    # Create and plot the ellipse
+                                    ellipse = Ellipse(
+                                        xy=(np.mean(group_data['PC1']), np.mean(group_data['PC2'])),
+                                        width=2*scale_x,
+                                        height=2*scale_y,
+                                        angle=angle,
+                                        facecolor='none',
+                                        edgecolor=color,
+                                        alpha=0.3,
+                                        linestyle='--'
                                     )
+                                    ax.add_patch(ellipse)
 
-                            ax2.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
-                            ax2.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
-                            ax2.set_title('PCA Loading Plot')
-                            ax2.grid(True, alpha=0.3)
-
-                            # Set axis limits to make the plot more symmetric
-                            max_val = max(
-                                abs(loading_df['PC1'].max()),
-                                abs(loading_df['PC1'].min()),
-                                abs(loading_df['PC2'].max()),
-                                abs(loading_df['PC2'].min())
-                            )
-                            ax2.set_xlim(-max_val * 1.2, max_val * 1.2)
-                            ax2.set_ylim(-max_val * 1.2, max_val * 1.2)
+                            ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
+                            ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+                            ax.set_title('PCA Score Plot')
+                            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                            ax.grid(True, alpha=0.3)
 
                             # Adjust layout to prevent legend overlap
                             plt.tight_layout()
 
                             # Download buttons
-                            col1, col2, col3 = st.columns(3)
+                            col1, col2 = st.columns(2)
                             with col1:
                                 # Download HTML (Interactive Plotly)
                                 html_buffer = fig_plotly.to_html(include_plotlyjs=True, full_html=True)
@@ -1043,26 +955,10 @@ if uploaded_files:
                                 fig_mpl.savefig(buffer, format='svg', bbox_inches='tight')
                                 buffer.seek(0)
                                 st.download_button(
-                                    label="Download Plots as SVG",
+                                    label="Download Plot as SVG",
                                     data=buffer,
-                                    file_name="pca_plots.svg",
+                                    file_name="pca_score_plot.svg",
                                     mime="image/svg+xml"
-                                )
-                            with col3:
-                                # Download data as CSV
-                                csv_data = pd.concat([
-                                    plot_df,
-                                    pd.DataFrame({
-                                        'Loading_PC1': loading_df['PC1'],
-                                        'Loading_PC2': loading_df['PC2']
-                                    }, index=loading_df.index)
-                                ], axis=1)
-                                csv_buffer = csv_data.to_csv(index=True)
-                                st.download_button(
-                                    label="Download PCA Results as CSV",
-                                    data=csv_buffer,
-                                    file_name="pca_results.csv",
-                                    mime="text/csv"
                                 )
 
                             plt.close(fig_mpl)
