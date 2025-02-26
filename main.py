@@ -725,11 +725,12 @@ if uploaded_files:
 
                     # Add UpSet plot after all comparisons
                     if len(st.session_state['volcano_comparisons']) > 1:
-                        st.markdown("---")  # Visual separator                        st.header("Overlap Analysis")
+                        st.markdown("---")  # Visual separator
+                        st.header("Overlap Analysis")
 
                         try:
-                            # Create dictionaries for storing genesets
-                            up_sets= {}
+                            # Create dictionaries forstoring gene sets
+                            up_sets = {}
                             down_sets = {}
 
                             # Collect genes from all comparisons
@@ -928,7 +929,7 @@ if uploaded_files:
                                 'Sample': sample_names
                             })
 
-                            # Create interactive scatter plot with template for consistent colors
+                            # Create interactive scatter plot with template for dark theme
                             fig_plotly = px.scatter(
                                 plot_df,
                                 x='PC1',
@@ -940,21 +941,28 @@ if uploaded_files:
                                     'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
                                     'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
                                 },
-                                template='plotly'  # Use default plotly template to preserve colors
+                                template='plotly_dark'  # Use dark template for Plotly
                             )
 
-                            # Update layout
+                            # Update layout for dark theme
                             fig_plotly.update_layout(
                                 height=600,
                                 legend_title="Sample Groups",
-                                plot_bgcolor='white',
-                                paper_bgcolor='white'
+                                plot_bgcolor='black',
+                                paper_bgcolor='black',
+                                font=dict(color='white'),
+                                title_font_color='white',
+                                legend_font_color='white'
                             )
+
+                            # Update axes for dark theme
+                            fig_plotly.update_xaxes(gridcolor='rgba(128, 128, 128, 0.2)', zerolinecolor='rgba(128, 128, 128, 0.2)')
+                            fig_plotly.update_yaxes(gridcolor='rgba(128, 128, 128, 0.2)', zerolinecolor='rgba(128, 128, 128, 0.2)')
 
                             # Display interactive plot
                             st.plotly_chart(fig_plotly, use_container_width=True)
 
-                            # Create static matplotlib plots for SVG export
+                            # Create static matplotlib plots for SVG export with white background
                             fig_mpl = plt.figure(figsize=(20, 8))
                             # Create a wider right subplot for legend space
                             gs = fig_mpl.add_gridspec(1, 2, width_ratios=[1, 1.2])
@@ -973,20 +981,20 @@ if uploaded_files:
                                     label=group,
                                     alpha=0.7
                                 )
-                                # Remove individual sample labels
 
                             ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
                             ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
                             ax1.set_title('PCA Score Plot')
                             ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
                             ax1.grid(True, alpha=0.3)
+                            ax1.set_facecolor('white')
 
                             # Loading plot
                             loadings = pca.components_.T
                             loading_df = pd.DataFrame(
                                 loadings[:, :2],
                                 columns=['PC1', 'PC2'],
-                                index=pca_input.columns  # Use protein names as index
+                                index=pca_input.columns
                             )
 
                             # Create arrows for loadings
@@ -995,7 +1003,7 @@ if uploaded_files:
                                     0, 0,
                                     loading_df.iloc[i, 0],
                                     loading_df.iloc[i, 1],
-                                    color='r',
+                                    color='red',
                                     alpha=0.5
                                 )
                                 if i < 10:  # Only label top 10 loadings for clarity
@@ -1003,7 +1011,7 @@ if uploaded_files:
                                         loading_df.iloc[i, 0] * 1.15,
                                         loading_df.iloc[i, 1] * 1.15,
                                         loading_df.index[i],
-                                        color='g',
+                                        color='green',
                                         ha='center',
                                         va='center'
                                     )
@@ -1012,6 +1020,7 @@ if uploaded_files:
                             ax2.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
                             ax2.set_title('PCA Loading Plot')
                             ax2.grid(True, alpha=0.3)
+                            ax2.set_facecolor('white')
 
                             # Set axis limits to make the plot more symmetric
                             max_val = max(
@@ -1023,7 +1032,8 @@ if uploaded_files:
                             ax2.set_xlim(-max_val * 1.2, max_val * 1.2)
                             ax2.set_ylim(-max_val * 1.2, max_val * 1.2)
 
-                            # Adjust layout to prevent legend overlap
+                            # Set figure background to white
+                            fig_mpl.patch.set_facecolor('white')
                             plt.tight_layout()
 
                             # Download buttons
