@@ -899,45 +899,35 @@ if uploaded_files:
                         # Prepare data for PCA
                         X = data[selected_columns].dropna()
                         if not X.empty:
-                            pca = PCA()
-                            X_pca = pca.fit_transform(X)
+                            # Create a DataFrame with samples as rows and proteins as columns
+                            pca_input = pd.DataFrame(index=X.index)
+                            sample_groups = []  # To store group information for each sample
+                            sample_names = []   # To store sample names
 
-                            # Create PCA results DataFrame
-                            pca_df = pd.DataFrame(
-                                X_pca[:, :2],
-                                columns=['PC1', 'PC2'],
-                                index=X.index
-                            )
-
-                            # Create mapping for samples to their groups
-                            sample_to_group = {}
-                            for group in selected_groups:
-                                group_cols = [col for col in structure["replicates"][group] 
-                                           if col.endswith("PG.Quantity")]
-                                for col in group_cols:
-                                    # Extract sample name from column name (remove bracketed number and .PG.Quantity)
-                                    sample_name = col.split("]")[1].split(".PG.Quantity")[0].strip()
-                                    sample_to_group[col] = {
-                                        'group': group_names[group],
-                                        'sample': sample_name
-                                    }
-
-                            # Prepare data for plotting
-                            plot_data = []
                             for col in selected_columns:
-                                sample_info = sample_to_group[col]
-                                values = X[col]
-                                # Get PCA coordinates for this sample
-                                pca_coords = pca.transform(values.values.reshape(1, -1))[0]
-                                plot_data.append({
-                                    'PC1': pca_coords[0],
-                                    'PC2': pca_coords[1],
-                                    'Group': sample_info['group'],
-                                    'Sample': sample_info['sample']
-                                })
+                                # Extract sample name and group
+                                sample_name = col.split("]")[1].split(".PG.Quantity")[0].strip()
+                                group = next(g for g in selected_groups if col in structure["replicates"][g])
 
-                            # Create plot DataFrame
-                            plot_df = pd.DataFrame(plot_data)
+                                # Add data to PCA input
+                                pca_input[sample_name] = X[col]
+                                sample_groups.append(group_names[group])
+                                sample_names.append(sample_name)
+
+                            # Transpose so samples are rows and proteins are columns
+                            pca_input = pca_input.T
+
+                            # Perform PCA
+                            pca = PCA()
+                            pca_result = pca.fit_transform(pca_input)
+
+                            # Create DataFrame for plotting
+                            plot_df = pd.DataFrame({
+                                'PC1': pca_result[:, 0],
+                                'PC2': pca_result[:, 1],
+                                'Group': sample_groups,
+                                'Sample': sample_names
+                            })
 
                             # Create interactive scatter plot
                             fig_plotly = px.scatter(
@@ -994,12 +984,12 @@ if uploaded_files:
                             ax1.legend()
                             ax1.grid(True, alpha=0.3)
 
-                            # Loading plot (keep existing loading plot code)
+                            # Loading plot
                             loadings = pca.components_.T
                             loading_df = pd.DataFrame(
                                 loadings[:, :2],
                                 columns=['PC1', 'PC2'],
-                                index=X.columns
+                                index=pca_input.columns  # Use protein names as index
                             )
 
                             # Create arrows for loadings
@@ -1011,14 +1001,15 @@ if uploaded_files:
                                     color='r',
                                     alpha=0.5
                                 )
-                                ax2.text(
-                                    loading_df.iloc[i, 0] * 1.15,
-                                    loading_df.iloc[i, 1] * 1.15,
-                                    loading_df.index[i],
-                                    color='g',
-                                    ha='center',
-                                    va='center'
-                                )
+                                if i < 10:  # Only label top 10 loadings for clarity
+                                    ax2.text(
+                                        loading_df.iloc[i, 0] * 1.15,
+                                        loading_df.iloc[i, 1] * 1.15,
+                                        loading_df.index[i],
+                                        color='g',
+                                        ha='center',
+                                        va='center'
+                                    )
 
                             ax2.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
                             ax2.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
