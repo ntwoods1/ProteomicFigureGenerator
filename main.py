@@ -730,7 +730,7 @@ if uploaded_files:
 
                         try:
                             # Create dictionaries for storing genesets
-                            up_sets = {}
+                            up_sets= {}
                             down_sets = {}
 
                             # Collect genes from all comparisons
@@ -909,32 +909,43 @@ if uploaded_files:
                                 index=X.index
                             )
 
-                            # Add group information
-                            # Create a mapping of columns to their groups using custom names
-                            col_to_group = {}
-                            for group, cols in group_to_columns.items():
-                                for col in cols:
-                                    col_to_group[col] = group_names[group]
+                            # Create mapping for samples to their groups
+                            sample_to_group = {}
+                            for group in selected_groups:
+                                group_cols = [col for col in structure["replicates"][group] 
+                                           if col.endswith("PG.Quantity")]
+                                for col in group_cols:
+                                    # Extract sample name from column name (remove bracketed number and .PG.Quantity)
+                                    sample_name = col.split("]")[1].split(".PG.Quantity")[0].strip()
+                                    sample_to_group[col] = {
+                                        'group': group_names[group],
+                                        'sample': sample_name
+                                    }
 
-                            # Calculate mean values for each protein across replicates
-                            protein_groups = []
-                            for idx in X.index:
-                                # Find which group has the highest mean value for this protein
-                                group_means = {}
-                                for group, cols in group_to_columns.items():
-                                    group_means[group_names[group]] = X.loc[idx, cols].mean()
-                                # Assign the protein to the group with highest expression
-                                protein_groups.append(max(group_means.items(), key=lambda x: x[1])[0])
+                            # Prepare data for plotting
+                            plot_data = []
+                            for col in selected_columns:
+                                sample_info = sample_to_group[col]
+                                values = X[col]
+                                # Get PCA coordinates for this sample
+                                pca_coords = pca.transform(values.values.reshape(1, -1))[0]
+                                plot_data.append({
+                                    'PC1': pca_coords[0],
+                                    'PC2': pca_coords[1],
+                                    'Group': sample_info['group'],
+                                    'Sample': sample_info['sample']
+                                })
 
-                            # Add group labels to PCA results
-                            pca_df['Group'] = protein_groups
+                            # Create plot DataFrame
+                            plot_df = pd.DataFrame(plot_data)
 
                             # Create interactive scatter plot
                             fig_plotly = px.scatter(
-                                pca_df,
+                                plot_df,
                                 x='PC1',
                                 y='PC2',
                                 color='Group',
+                                hover_name='Sample',
                                 title='PCA Score Plot',
                                 labels={
                                     'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
@@ -955,24 +966,35 @@ if uploaded_files:
                             fig_mpl, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
 
                             # Score plot
-                            groups = pca_df['Group'].unique()
+                            groups = plot_df['Group'].unique()
                             colors = plt.cm.tab10(np.linspace(0, 1, len(groups)))
                             for group, color in zip(groups, colors):
-                                mask = pca_df['Group'] == group
+                                mask = plot_df['Group'] == group
                                 ax1.scatter(
-                                    pca_df.loc[mask, 'PC1'],
-                                    pca_df.loc[mask, 'PC2'],
+                                    plot_df.loc[mask, 'PC1'],
+                                    plot_df.loc[mask, 'PC2'],
                                     c=[color],
                                     label=group,
                                     alpha=0.7
                                 )
+                                # Add sample labels
+                                for idx in plot_df[mask].index:
+                                    ax1.annotate(
+                                        plot_df.loc[idx, 'Sample'],
+                                        (plot_df.loc[idx, 'PC1'], plot_df.loc[idx, 'PC2']),
+                                        xytext=(5, 5),
+                                        textcoords='offset points',
+                                        fontsize=8,
+                                        alpha=0.7
+                                    )
+
                             ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
                             ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
                             ax1.set_title('PCA Score Plot')
                             ax1.legend()
                             ax1.grid(True, alpha=0.3)
 
-                            # Loading plot
+                            # Loading plot (keep existing loading plot code)
                             loadings = pca.components_.T
                             loading_df = pd.DataFrame(
                                 loadings[:, :2],
@@ -1001,8 +1023,6 @@ if uploaded_files:
                             ax2.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
                             ax2.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
                             ax2.set_title('PCA Loading Plot')
-
-                            # Add grid to loading plot
                             ax2.grid(True, alpha=0.3)
 
                             # Set axis limits to make the plot more symmetric
@@ -1043,7 +1063,7 @@ if uploaded_files:
                             with col3:
                                 # Download data as CSV
                                 csv_data = pd.concat([
-                                    pca_df,
+                                    plot_df,
                                     pd.DataFrame({
                                         'Loading_PC1': loading_df['PC1'],
                                         'Loading_PC2': loading_df['PC2']
