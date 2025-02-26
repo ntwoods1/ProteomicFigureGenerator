@@ -12,17 +12,16 @@ from scipy.stats import ttest_ind
 from scipy.cluster.hierarchy import linkage, dendrogram
 import io
 import logging
-from utils.data_processing import (
-    analyze_dataset_structure, 
-    calculate_cv_table, 
-    handle_missing_values,
-    normalize_data,
-    filter_by_peptide_count  
-)
-from itertools import combinations
+import sys
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 try:
@@ -581,8 +580,8 @@ try:
                                             significant_down = significant & (volcano_data['log2FoldChange'] <= -log2fc_cutoff)
 
                                             # Create color array
-                                            marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                               for up, down in zip(significant_up, significant_down)]
+                                            marker_colors = ['red' if up else 'blue' if down else 'gray'
+                                                                for up, down in zip(significant_up, significant_down)]
 
                                             # Add protein labels input
                                             proteins_to_label = st.text_area(
@@ -649,9 +648,9 @@ try:
                                                             x = volcano_data.loc[idx, 'log2FoldChange']
                                                             y = volcano_data.loc[idx, '-log10(p-value)']
                                                             ax.annotate(
-                                                                gene_name, 
+                                                                gene_name,
                                                                 (x, y),
-                                                                xytext=(5, 5), 
+                                                                xytext=(5, 5),
                                                                 textcoords='offset points',
                                                                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
                                                                 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
@@ -724,7 +723,7 @@ try:
                                                             st.write(f"**Mean {group2}:** {row['Mean2']:.2f}")
                                                             st.write("---")
                                                     else:
-                                                        st.warning(f"No proteins found matching '{protein}'")
+                                                        st.warning(f"No proteinsfound matching '{protein}'")
 
                                     except Exception as e:
                                         st.error(f"Error generating volcano plot: {str(e)}")
@@ -822,7 +821,7 @@ try:
                     selected_columns = []
                     group_to_columns = {}  # Map to track which columns belong to which group
                     for group in selected_groups:
-                        group_cols = [col for col in structure["replicates"][group] 
+                        group_cols = [col for col in structure["replicates"][group]
                                     if col.endswith("PG.Quantity")]
                         selected_columns.extend(group_cols)
                         group_to_columns[group] = group_cols
@@ -915,13 +914,13 @@ try:
                                         # Calculate the covariance matrix
                                         cov = np.cov(group_data['PC1'], group_data['PC2'])
                                         # Calculate the eigenvalues and eigenvectors
-                                        eigenvals, eigenvecs = np.linalg.eig(cov)
+                                        eigvals, eigvecs = np.linalg.eigh(cov)
                                         # Calculate the angle
-                                        angle = np.degrees(np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]))
+                                        angle = np.degrees(np.arctan2(*eigvecs[:, 0][::-1]))
                                         # Calculate the scale (for 95% confidence)
                                         chi2_val = 5.991  # 95% confidence for 2 degrees of freedom
-                                        scale_x = np.sqrt(chi2_val * eigenvals[0])
-                                        scale_y = np.sqrt(chi2_val * eigenvals[1])
+                                        scale_x = np.sqrt(chi2_val * eigvals[0])
+                                        scale_y = np.sqrt(chi2_val * eigvals[1])
                                         # Create and plot the ellipse
                                         ellipse = Ellipse(
                                             xy=(np.mean(group_data['PC1']), np.mean(group_data['PC2'])),
