@@ -725,8 +725,7 @@ if uploaded_files:
 
                     # Add UpSet plot after all comparisons
                     if len(st.session_state['volcano_comparisons']) > 1:
-                        st.markdown("---")  # Visual separator
-                        st.header("Overlap Analysis")
+                        st.markdown("---")  # Visual separator                        st.header("Overlap Analysis")
 
                         try:
                             # Create dictionaries for storing genesets
@@ -929,7 +928,7 @@ if uploaded_files:
                                 'Sample': sample_names
                             })
 
-                            # Create interactive scatter plot
+                            # Create interactive scatter plot with template for consistent colors
                             fig_plotly = px.scatter(
                                 plot_df,
                                 x='PC1',
@@ -940,20 +939,27 @@ if uploaded_files:
                                 labels={
                                     'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
                                     'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
-                                }
+                                },
+                                template='plotly'  # Use default plotly template to preserve colors
                             )
 
                             # Update layout
                             fig_plotly.update_layout(
                                 height=600,
-                                legend_title="Sample Groups"
+                                legend_title="Sample Groups",
+                                plot_bgcolor='white',
+                                paper_bgcolor='white'
                             )
 
                             # Display interactive plot
                             st.plotly_chart(fig_plotly, use_container_width=True)
 
                             # Create static matplotlib plots for SVG export
-                            fig_mpl, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+                            fig_mpl = plt.figure(figsize=(20, 8))
+                            # Create a wider right subplot for legend space
+                            gs = fig_mpl.add_gridspec(1, 2, width_ratios=[1, 1.2])
+                            ax1 = fig_mpl.add_subplot(gs[0])
+                            ax2 = fig_mpl.add_subplot(gs[1])
 
                             # Score plot
                             groups = plot_df['Group'].unique()
@@ -967,21 +973,12 @@ if uploaded_files:
                                     label=group,
                                     alpha=0.7
                                 )
-                                # Add sample labels
-                                for idx in plot_df[mask].index:
-                                    ax1.annotate(
-                                        plot_df.loc[idx, 'Sample'],
-                                        (plot_df.loc[idx, 'PC1'], plot_df.loc[idx, 'PC2']),
-                                        xytext=(5, 5),
-                                        textcoords='offset points',
-                                        fontsize=8,
-                                        alpha=0.7
-                                    )
+                                # Remove individual sample labels
 
                             ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
                             ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
                             ax1.set_title('PCA Score Plot')
-                            ax1.legend()
+                            ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
                             ax1.grid(True, alpha=0.3)
 
                             # Loading plot
@@ -1026,14 +1023,14 @@ if uploaded_files:
                             ax2.set_xlim(-max_val * 1.2, max_val * 1.2)
                             ax2.set_ylim(-max_val * 1.2, max_val * 1.2)
 
-                            # Adjust layout
+                            # Adjust layout to prevent legend overlap
                             plt.tight_layout()
 
                             # Download buttons
                             col1, col2, col3 = st.columns(3)
                             with col1:
                                 # Download HTML (Interactive Plotly)
-                                html_buffer = fig_plotly.to_html()
+                                html_buffer = fig_plotly.to_html(include_plotlyjs=True, full_html=True)
                                 st.download_button(
                                     label="Download Interactive Plot (HTML)",
                                     data=html_buffer,
