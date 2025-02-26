@@ -902,18 +902,32 @@ if uploaded_files:
                             pca = PCA()
                             X_pca = pca.fit_transform(X)
 
-                            # Create mapping of columns to their groups
-                            column_groups = []
-                            for col in selected_columns:
-                                group = next(g for g in selected_groups if col in structure["replicates"][g])
-                                column_groups.append(group_names[group])  # Use custom name
-
-                            # Create DataFrame for plotting
+                            # Create PCA results DataFrame
                             pca_df = pd.DataFrame(
                                 X_pca[:, :2],
-                                columns=['PC1', 'PC2']
+                                columns=['PC1', 'PC2'],
+                                index=X.index
                             )
-                            pca_df['Group'] = column_groups
+
+                            # Add group information
+                            # Create a mapping of columns to their groups using custom names
+                            col_to_group = {}
+                            for group, cols in group_to_columns.items():
+                                for col in cols:
+                                    col_to_group[col] = group_names[group]
+
+                            # Calculate mean values for each protein across replicates
+                            protein_groups = []
+                            for idx in X.index:
+                                # Find which group has the highest mean value for this protein
+                                group_means = {}
+                                for group, cols in group_to_columns.items():
+                                    group_means[group_names[group]] = X.loc[idx, cols].mean()
+                                # Assign the protein to the group with highest expression
+                                protein_groups.append(max(group_means.items(), key=lambda x: x[1])[0])
+
+                            # Add group labels to PCA results
+                            pca_df['Group'] = protein_groups
 
                             # Create interactive scatter plot
                             fig = px.scatter(
