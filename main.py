@@ -930,12 +930,12 @@ if uploaded_files:
                             pca_df['Group'] = protein_groups
 
                             # Create interactive scatter plot
-                            fig = px.scatter(
+                            fig_plotly = px.scatter(
                                 pca_df,
                                 x='PC1',
                                 y='PC2',
                                 color='Group',
-                                title='PCA Plot',
+                                title='PCA Score Plot',
                                 labels={
                                     'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
                                     'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
@@ -943,34 +943,121 @@ if uploaded_files:
                             )
 
                             # Update layout
-                            fig.update_layout(
+                            fig_plotly.update_layout(
                                 height=600,
                                 legend_title="Sample Groups"
                             )
 
-                            # Display plot
-                            st.plotly_chart(fig, use_container_width=True)
+                            # Display interactive plot
+                            st.plotly_chart(fig_plotly, use_container_width=True)
+
+                            # Create static matplotlib plots for SVG export
+                            fig_mpl, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+
+                            # Score plot
+                            groups = pca_df['Group'].unique()
+                            colors = plt.cm.tab10(np.linspace(0, 1, len(groups)))
+                            for group, color in zip(groups, colors):
+                                mask = pca_df['Group'] == group
+                                ax1.scatter(
+                                    pca_df.loc[mask, 'PC1'],
+                                    pca_df.loc[mask, 'PC2'],
+                                    c=[color],
+                                    label=group,
+                                    alpha=0.7
+                                )
+                            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
+                            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+                            ax1.set_title('PCA Score Plot')
+                            ax1.legend()
+                            ax1.grid(True, alpha=0.3)
+
+                            # Loading plot
+                            loadings = pca.components_.T
+                            loading_df = pd.DataFrame(
+                                loadings[:, :2],
+                                columns=['PC1', 'PC2'],
+                                index=X.columns
+                            )
+
+                            # Create arrows for loadings
+                            for i in range(len(loading_df)):
+                                ax2.arrow(
+                                    0, 0,
+                                    loading_df.iloc[i, 0],
+                                    loading_df.iloc[i, 1],
+                                    color='r',
+                                    alpha=0.5
+                                )
+                                ax2.text(
+                                    loading_df.iloc[i, 0] * 1.15,
+                                    loading_df.iloc[i, 1] * 1.15,
+                                    loading_df.index[i],
+                                    color='g',
+                                    ha='center',
+                                    va='center'
+                                )
+
+                            ax2.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
+                            ax2.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+                            ax2.set_title('PCA Loading Plot')
+
+                            # Add grid to loading plot
+                            ax2.grid(True, alpha=0.3)
+
+                            # Set axis limits to make the plot more symmetric
+                            max_val = max(
+                                abs(loading_df['PC1'].max()),
+                                abs(loading_df['PC1'].min()),
+                                abs(loading_df['PC2'].max()),
+                                abs(loading_df['PC2'].min())
+                            )
+                            ax2.set_xlim(-max_val * 1.2, max_val * 1.2)
+                            ax2.set_ylim(-max_val * 1.2, max_val * 1.2)
+
+                            # Adjust layout
+                            plt.tight_layout()
 
                             # Download buttons
-                            col1, col2 = st.columns(2)
+                            col1, col2, col3 = st.columns(3)
                             with col1:
                                 # Download HTML (Interactive Plotly)
-                                html_buffer = fig.to_html()
+                                html_buffer = fig_plotly.to_html()
                                 st.download_button(
                                     label="Download Interactive Plot (HTML)",
                                     data=html_buffer,
-                                    file_name="pca_plot.html",
+                                    file_name="pca_score_plot.html",
                                     mime="text/html"
                                 )
                             with col2:
+                                # Save SVG (Static matplotlib)
+                                buffer = io.BytesIO()
+                                fig_mpl.savefig(buffer, format='svg', bbox_inches='tight')
+                                buffer.seek(0)
+                                st.download_button(
+                                    label="Download Plots as SVG",
+                                    data=buffer,
+                                    file_name="pca_plots.svg",
+                                    mime="image/svg+xml"
+                                )
+                            with col3:
                                 # Download data as CSV
-                                csv_buffer = pca_df.to_csv(index=True)
+                                csv_data = pd.concat([
+                                    pca_df,
+                                    pd.DataFrame({
+                                        'Loading_PC1': loading_df['PC1'],
+                                        'Loading_PC2': loading_df['PC2']
+                                    }, index=loading_df.index)
+                                ], axis=1)
+                                csv_buffer = csv_data.to_csv(index=True)
                                 st.download_button(
                                     label="Download PCA Results as CSV",
                                     data=csv_buffer,
                                     file_name="pca_results.csv",
                                     mime="text/csv"
                                 )
+
+                            plt.close(fig_mpl)
 
                             # Display explained variance ratios
                             st.write("### Explained Variance Ratios")
