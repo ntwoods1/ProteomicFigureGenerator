@@ -576,7 +576,7 @@ if uploaded_files:
 
                                         # Create color array
                                         marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                       for up, down in zip(significant_up, significant_down)]
+                                                           for up, down in zip(significant_up, significant_down)]
 
                                         # Add protein labels input
                                         proteins_to_label = st.text_area(
@@ -853,44 +853,113 @@ if uploaded_files:
 
         if dataset_name:
             data = datasets[dataset_name]['normalized']
-            numeric_cols = data.select_dtypes(include=[np.number]).columns
+            structure = dataset_structures[dataset_name]
 
-            selected_columns = st.multiselect(
-                "Select columns for PCA",
-                options=numeric_cols,
-                default=numeric_cols[:3] if len(numeric_cols) > 2 else numeric_cols
+            # Get replicate groups
+            replicate_groups = list(structure["replicates"].keys())
+
+            # Allow selection of replicate groups
+            selected_groups = st.multiselect(
+                "Select replicate groups for PCA",
+                options=replicate_groups,
+                default=replicate_groups[:3] if len(replicate_groups) > 2 else replicate_groups
             )
 
-            if len(selected_columns) >= 2:
-                try:
-                    X = data[selected_columns].dropna()
-                    if not X.empty:
-                        pca = PCA()
-                        X_pca = pca.fit_transform(X)
+            # Custom names for selected groups
+            group_names = {}
+            if selected_groups:
+                st.write("Enter custom names for selected groups (leave blank to use original names):")
+                cols = st.columns(len(selected_groups))
+                for idx, group in enumerate(selected_groups):
+                    with cols[idx]:
+                        custom_name = st.text_input(f"Name for {group}", value=group, key=f"custom_name_{idx}")
+                        group_names[group] = custom_name
 
-                        # Create DataFrame for plotting
-                        pca_df = pd.DataFrame(
-                            X_pca[:, :2],
-                            columns=['PC1', 'PC2']
-                        )
+                # Get columns for selected groups
+                selected_columns = []
+                for group in selected_groups:
+                    selected_columns.extend([col for col in structure["replicates"][group] 
+                                          if col.endswith("PG.Quantity")])
 
-                        # Create interactive scatter plot
-                        fig = px.scatter(
-                            pca_df,
-                            x='PC1',
-                            y='PC2',
-                            title='PCA Plot',
-                            labels={
-                                'PC1': f'PC1({pca.explained_variance_ratio_[0]:.2%})',
-                                'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
-                            }
-                        )
-                        st.plotly_chart(fig)
+                if len(selected_columns) >= 2:
+                    try:
+                        # Prepare data for PCA
+                        X = data[selected_columns].dropna()
+                        if not X.empty:
+                            pca = PCA()
+                            X_pca = pca.fit_transform(X)
 
-                except Exception as e:
-                    st.error(f"Error performing PCA: {e}")
+                            # Create mapping of columns to their groups
+                            column_groups = []
+                            for col in selected_columns:
+                                group = next(g for g in selected_groups if col in structure["replicates"][g])
+                                column_groups.append(group_names[group])  # Use custom name
+
+                            # Create DataFrame for plotting
+                            pca_df = pd.DataFrame(
+                                X_pca[:, :2],
+                                columns=['PC1', 'PC2']
+                            )
+                            pca_df['Group'] = column_groups
+
+                            # Create interactive scatter plot
+                            fig = px.scatter(
+                                pca_df,
+                                x='PC1',
+                                y='PC2',
+                                color='Group',
+                                title='PCA Plot',
+                                labels={
+                                    'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
+                                    'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.2%})'
+                                }
+                            )
+
+                            # Update layout
+                            fig.update_layout(
+                                height=600,
+                                legend_title="Sample Groups"
+                            )
+
+                            # Display plot
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # Download buttons
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                # Download HTML (Interactive Plotly)
+                                html_buffer = fig.to_html()
+                                st.download_button(
+                                    label="Download Interactive Plot (HTML)",
+                                    data=html_buffer,
+                                    file_name="pca_plot.html",
+                                    mime="text/html"
+                                )
+                            with col2:
+                                # Download data as CSV
+                                csv_buffer = pca_df.to_csv(index=True)
+                                st.download_button(
+                                    label="Download PCA Results as CSV",
+                                    data=csv_buffer,
+                                    file_name="pca_results.csv",
+                                    mime="text/csv"
+                                )
+
+                            # Display explained variance ratios
+                            st.write("### Explained Variance Ratios")
+                            explained_var_df = pd.DataFrame({
+                                'Principal Component': [f'PC{i+1}' for i in range(len(pca.explained_variance_ratio_))],
+                                'Explained Variance Ratio': pca.explained_variance_ratio_,
+                                'Cumulative Variance Ratio': np.cumsum(pca.explained_variance_ratio_)
+                            })
+                            st.dataframe(explained_var_df)
+
+                    except Exception as e:
+                        st.error(f"Error performing PCA: {e}")
+                else:
+                    st.warning("Please select at least 2 columns for PCA")
             else:
-                st.warning("Please select at least 2 columns for PCA")
+                st.warning("Please select at least one replicate group")
 
     # Heat Map Tab
     with tab4:
