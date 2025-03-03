@@ -713,155 +713,153 @@ if uploaded_files:
                                 except Exception as e:
                                     st.error(f"Error generating volcano plot: {str(e)}")
 
-                        #                    # Add UpSet plot after all comparisons
-                        if len(st.session_state['volcano_comparisons']) > 1:
-                            st.markdown("---")  # Visual separator
-                            st.header("Overlap Analysis")
+                                # Add UpSet plot after all comparisons
+                                if len(st.session_state['volcano_comparisons']) > 1:
+                                    st.markdown("---")  # Visual separator
+                                    st.header("Overlap Analysis")
 
-                            try:
-                                # Create dictionaries for storing gene sets
-                                upsets = {}
-                                down_sets = {}
+                                    try:
+                                        # Create dictionaries for storing gene sets
+                                        up_sets = {}
+                                        down_sets = {}
 
-                                # Collect genes from all comparisons
-                                for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
-                                    if comp_data['significant_up']:
-                                        up_sets[comp_key] = list(comp_data['significant_up'])
-                                    if comp_data['significant_down']:
-                                        down_sets[comp_key] = list(comp_data['significant_down'])
+                                        # Collect genes from all comparisons
+                                        for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
+                                            if comp_data['significant_up']:
+                                                up_sets[comp_key] = list(comp_data['significant_up'])
+                                            if comp_data['significant_down']:
+                                                down_sets[comp_key] = list(comp_data['significant_down'])
 
-                                if up_sets:
-                                    st.subheader("Up-regulated Proteins")
-                                    st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
+                                        if up_sets:
+                                            st.subheader("Up-regulated Proteins")
+                                            st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
 
-                                    # Check if we need to regenerate the plot
-                                    cache_key = f"upset_up_{dataset_name}"
-                                    if cache_key not in st.session_state:
-                                        # Create figure for up-regulated proteins
-                                        fig_up = plt.figure(figsize=(12, 6))
-                                        up_data = from_contents(up_sets)
-                                        upset = UpSet(up_data)
-                                        upset.plot(fig=fig_up)
+                                            # Check if we need to regenerate the plot
+                                            cache_key = f"upset_up_{dataset_name}"
+                                            if cache_key not in st.session_state:
+                                                # Create figure for up-regulated proteins
+                                                fig_up = plt.figure(figsize=(12, 6))
+                                                up_data = from_contents(up_sets)
+                                                upset = UpSet(up_data)
+                                                upset.plot(fig=fig_up)
 
-                                        # Store in session state
-                                        buf = io.BytesIO()
-                                        fig_up.savefig(buf, format='svg', bbox_inches='tight')
-                                        buf.seek(0)
+                                                # Store in session state
+                                                buf = io.BytesIO()
+                                                fig_up.savefig(buf, format='svg', bbox_inches='tight')
+                                                buf.seek(0)
 
-                                        # Create protein list
-                                        protein_data = []
-                                        all_proteins = set().union(*up_sets.values())
-                                        for protein in all_proteins:
-                                            groups = [group for group, proteins in up_sets.items() if protein in proteins]
-                                            protein_data.append({
-                                                'Protein': protein,
-                                                'Groups': ';'.join(groups),
-                                                'Number_of_Groups': len(groups)
-                                            })
-                                        protein_df = pd.DataFrame(protein_data)
+                                                # Create protein list
+                                                protein_data = []
+                                                all_proteins = set().union(*up_sets.values())
+                                                for protein in all_proteins:
+                                                    groups = [group for group, proteins in up_sets.items() if protein in proteins]
+                                                    protein_data.append({
+                                                        'Protein': protein,
+                                                        'Groups': ';'.join(groups),
+                                                        'Number_of_Groups': len(groups)
+                                                    })
+                                                protein_df = pd.DataFrame(protein_data)
 
-                                        st.session_state[cache_key] = {
-                                            'figure': fig_up,
-                                            'svg_buffer': buf,
-                                            'protein_data': protein_df
-                                        }
-                                        plt.close(fig_up)
+                                                st.session_state[cache_key] = {
+                                                    'figure': fig_up,
+                                                    'svg_buffer': buf,
+                                                    'protein_data': protein_df
+                                                }
+                                                plt.close(fig_up)
 
-                                    # Display cached figure
-                                    st.pyplot(st.session_state[cache_key]['figure'])
+                                            # Display cached figure
+                                            st.pyplot(st.session_state[cache_key]['figure'])
 
-                                    # Create download buttons
-                                    col1, col2 = st.columns(2)
-                                    with col1:
-                                        st.download_button(
-                                            label="Download Plot as SVG",
-                                            data=st.session_state[cache_key]['svg_buffer'],
-                                            file_name="upset_plot_upregulated.svg",
-                                            mime="image/svg+xml",
-                                            key=f"up_svg_{dataset_name}"
-                                        )
-                                    with col2:
-                                        protein_csv = st.session_state[cache_key]['protein_data'].to_csv(index=False)
-                                        st.download_button(
-                                            label="Download Protein List",
-                                            data=protein_csv,
-                                            file_name="upregulated_proteins.csv",
-                                            mime="text/csv",
-                                            key=f"up_csv_{dataset_name}"
-                                        )
+                                            # Create download buttons
+                                            col1, col2 = st.columns(2)
+                                            with col1:
+                                                st.download_button(
+                                                    label="Download Plot as SVG",
+                                                    data=st.session_state[cache_key]['svg_buffer'],
+                                                    file_name="upset_plot_upregulated.svg",
+                                                    mime="image/svg+xml",
+                                                    key=f"up_svg_{dataset_name}"
+                                                )
+                                            with col2:
+                                                protein_csv = st.session_state[cache_key]['protein_data'].to_csv(index=False)
+                                                st.download_button(
+                                                    label="Download Protein List",
+                                                    data=protein_csv,
+                                                    file_name="upregulated_proteins.csv",
+                                                    mime="text/csv",
+                                                    key=f"up_csv_{dataset_name}"
+                                                )
 
-                                if down_sets:
-                                    st.subheader("Down-regulated Proteins")
-                                    st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
+                                        if down_sets:
+                                            st.subheader("Down-regulated Proteins")
+                                            st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
 
-                                    # Check if we need to regenerate the plot
-                                    cache_key = f"upset_down_{dataset_name}"
-                                    if cache_key not in st.session_state:
-                                        # Create figure for down-regulated proteins
-                                        fig_down = plt.figure(figsize=(12, 6))
-                                        down_data = from_contents(down_sets)
-                                        upset = UpSet(down_data)
-                                        upset.plot(fig=fig_down)
+                                            # Check if we need to regenerate the plot
+                                            cache_key = f"upset_down_{dataset_name}"
+                                            if cache_key not in st.session_state:
+                                                # Create figure for down-regulated proteins
+                                                fig_down = plt.figure(figsize=(12, 6))
+                                                down_data = from_contents(down_sets)
+                                                upset = UpSet(down_data)
+                                                upset.plot(fig=fig_down)
 
-                                        # Store in session state
-                                        buf = io.BytesIO()
-                                        fig_down.savefig(buf, format='svg', bbox_inches='tight')
-                                        buf.seek(0)
+                                                # Store in session state
+                                                buf = io.BytesIO()
+                                                fig_down.savefig(buf, format='svg', bbox_inches='tight')
+                                                buf.seek(0)
 
-                                        # Create protein list
-                                        protein_data = []
-                                        all_proteins = set().union(*down_sets.values())
-                                        for protein in all_proteins:
-                                            groups = [group for group, proteins in down_sets.items() if protein in proteins]
-                                            protein_data.append({
-                                                'Protein': protein,
-                                                'Groups': ';'.join(groups),
-                                                'Number_of_Groups': len(groups)
-                                            })
-                                        protein_df = pd.DataFrame(protein_data)
+                                                # Create protein list
+                                                protein_data = []
+                                                all_proteins = set().union(*down_sets.values())
+                                                for protein in all_proteins:
+                                                    groups = [group for group, proteins in down_sets.items() if protein in proteins]
+                                                    protein_data.append({
+                                                        'Protein': protein,
+                                                        'Groups': ';'.join(groups),
+                                                        'Number_of_Groups': len(groups)
+                                                    })
+                                                protein_df = pd.DataFrame(protein_data)
 
-                                        st.session_state[cache_key] = {
-                                            'figure': fig_down,
-                                            'svg_buffer': buf,
-                                            'protein_data': protein_df
-                                        }
-                                        plt.close(fig_down)
+                                                st.session_state[cache_key] = {
+                                                    'figure': fig_down,
+                                                    'svg_buffer': buf,
+                                                    'protein_data': protein_df
+                                                }
+                                                plt.close(fig_down)
 
-                                    # Display cached figure
-                                    st.pyplot(st.session_state[cache_key]['figure'])
+                                            # Display cached figure
+                                            st.pyplot(st.session_state[cache_key]['figure'])
 
-                                    # Create download buttons
-                                    col1, col2 = st.columns(2)
-                                    with col1:
-                                        st.download_button(
-                                            label="Download Plot as SVG",
-                                            data=st.session_state[cache_key]['svg_buffer'],
-                                            file_name="upset_plot_downregulated.svg",
-                                            mime="image/svg+xml",
-                                            key=f"down_svg_{dataset_name}"
-                                        )
-                                    with col2:
-                                        protein_csv = st.session_state[cache_key]['protein_data'].to_csv(index=False)
-                                        st.download_button(
-                                            label="Download Protein List",
-                                            data=protein_csv,
-                                            file_name="downregulated_proteins.csv",
-                                            mime="text/csv",
-                                            key=f"down_csv_{dataset_name}"
-                                        )
+                                            # Create download buttons
+                                            col1, col2 = st.columns(2)
+                                            with col1:
+                                                st.download_button(
+                                                    label="Download Plot as SVG",
+                                                    data=st.session_state[cache_key]['svg_buffer'],
+                                                    file_name="upset_plot_downregulated.svg",
+                                                    mime="image/svg+xml",
+                                                    key=f"down_svg_{dataset_name}"
+                                                )
+                                            with col2:
+                                                protein_csv = st.session_state[cache_key]['protein_data'].to_csv(index=False)
+                                                st.download_button(
+                                                    label="Download Protein List",
+                                                    data=protein_csv,
+                                                    file_name="downregulated_proteins.csv",
+                                                    mime="text/csv",
+                                                    key=f"down_csv_{dataset_name}"
+                                                )
 
-                            except Exception as e:
-                                st.error(f"Error generating overlap analysis: {str(e)}")
+                                    except Exception as e:
+                                        st.error(f"Error generating overlap analysis: {str(e)}")
 
-                else:
-                    st.warning("No replicate groups found in the dataset")
-            else:
-                st.error("Dataset structure information not found")
-        else:
-            if dataset_name:
-                st.error("Selected dataset not found")
-            else:
-                st.info("Please select a dataset to create a volcano plot")
+                                else:
+                                    st.warning("No replicate groups found in the dataset")
+                            else:
+                                if dataset_name:
+                                    st.error("Selected dataset not found")
+                                else:
+                                    st.info("Please select a dataset to create a volcano plot")
 
     elif active_tab == "PCA":
         st.header("PCA Analysis")
@@ -1266,17 +1264,11 @@ if uploaded_files:
                         # Create two tabs for different heatmap views
                         heatmap_tab1, heatmap_tab2 = st.tabs(["Detailed Heatmap", "Group Average Heatmap"])
 
-                        # Calculate dynamic figure size based on number of proteins
-                        base_height = 8  # minimum height
-                        height_per_protein = 0.2  # additional height per protein
-                        figure_height = max(base_height, 8 + (n_proteins - 50) * height_per_protein)
-
-                        # Adjust dendrogram ratio based on figure size
-                        dendro_ratio = min(0.2, 10/figure_height)  # Scale dendrogram ratio inversely with height
+                        # Calculate figure size using the specified formula
+                        # width is fixed at 10, height is dynamic based on number of proteins (n)
+                        figure_height = 10 + (n_proteins/10) - 1
 
                         with heatmap_tab1:
-                            # Create detailed clustermap with dynamic sizing
-                            plt.figure(figsize=(15, figure_height))
                             g1 = sns.clustermap(
                                 plot_data,
                                 cmap='RdBu_r',
@@ -1284,8 +1276,9 @@ if uploaded_files:
                                 robust=True,
                                 xticklabels=column_labels,
                                 yticklabels=row_labels,
-                                dendrogram_ratio=(dendro_ratio, .2),
+                                dendrogram_ratio=(.1, .2),
                                 cbar_pos=(0.02, .2, .03, .4),
+                                figsize=(10, figure_height),
                                 row_cluster=True,
                                 col_cluster=True
                             )
@@ -1308,8 +1301,6 @@ if uploaded_files:
                             plt.close('all')
 
                         with heatmap_tab2:
-                            # Create averaged clustermap with dynamic sizing
-                            plt.figure(figsize=(12, figure_height))
                             g2 = sns.clustermap(
                                 plot_data_means,
                                 cmap='RdBu_r',
@@ -1317,8 +1308,9 @@ if uploaded_files:
                                 robust=True,
                                 xticklabels=[group_names[group] for group in selected_groups],
                                 yticklabels=row_labels,
-                                dendrogram_ratio=(dendro_ratio, .2),
+                                dendrogram_ratio=(.1, .2),
                                 cbar_pos=(0.02, .2, .03, .4),
+                                figsize=(10, figure_height),
                                 row_cluster=True,
                                 col_cluster=True
                             )
