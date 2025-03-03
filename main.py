@@ -1268,6 +1268,13 @@ if uploaded_files:
                         # width is fixed at 10, height is dynamic based on number of proteins (n)
                         figure_height = 10 + (n_proteins/10) - 1
 
+                        # Add clustering toggles
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            cluster_rows = st.toggle("Cluster proteins", value=True)
+                        with col2:
+                            cluster_cols = st.toggle("Cluster samples", value=True)
+
                         with heatmap_tab1:
                             g1 = sns.clustermap(
                                 plot_data,
@@ -1279,8 +1286,8 @@ if uploaded_files:
                                 dendrogram_ratio=(.1, .2),
                                 cbar_pos=(0.02, .2, .03, .4),
                                 figsize=(10, figure_height),
-                                row_cluster=True,
-                                col_cluster=True
+                                row_cluster=cluster_rows,
+                                col_cluster=cluster_cols
                             )
 
                             # Adjust y-axis labels after creation
@@ -1311,8 +1318,8 @@ if uploaded_files:
                                 dendrogram_ratio=(.1, .2),
                                 cbar_pos=(0.02, .2, .03, .4),
                                 figsize=(10, figure_height),
-                                row_cluster=True,
-                                col_cluster=True
+                                row_cluster=cluster_rows,
+                                col_cluster=cluster_cols
                             )
 
                             # Adjust y-axis labels after creation
@@ -1479,6 +1486,13 @@ if uploaded_files:
                                 # Calculate figure size using the specified formula
                                 figure_height = 10 + (len(matches)/10) - 1
 
+                                # Add clustering toggles
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    cluster_rows = st.toggle("Cluster proteins", value=True)
+                                with col2:
+                                    cluster_cols = st.toggle("Cluster samples", value=True)
+
                                 with heatmap_tab1:
                                     g1 = sns.clustermap(
                                         heatmap_data,
@@ -1490,8 +1504,8 @@ if uploaded_files:
                                         dendrogram_ratio=(.1, .2),
                                         cbar_pos=(0.02, .2, .03, .4),
                                         figsize=(10, figure_height),
-                                        row_cluster=True,
-                                        col_cluster=True
+                                        row_cluster=cluster_rows,
+                                        col_cluster=cluster_cols
                                     )
 
                                     # Adjust y-axis labels
@@ -1521,8 +1535,9 @@ if uploaded_files:
                                         yticklabels=row_labels,
                                         dendrogram_ratio=(.1, .2),
                                         cbar_pos=(0.02, .2, .03, .4),
-                                        figsize=(10, figure_height),                                        row_cluster=True,
-                                        col_cluster=True
+                                        figsize=(10, figure_height),
+                                        row_cluster=cluster_rows,
+                                        col_cluster=cluster_cols
                                     )
 
                                     # Adjust y-axis labels
