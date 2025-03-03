@@ -332,7 +332,7 @@ if uploaded_files:
             continue
 
     # Display tabs
-    tabs = ["Data Overview", "Volcano Plot", "PCA", "Heat Map"]
+    tabs = ["Data Overview", "Volcano Plot", "PCA", "Heat Map", "Custom Protein Heatmap"]
     active_tab = st.radio("Select Analysis", tabs, horizontal=True, key="analysis_tabs", index=st.session_state['active_tab'])
     st.session_state['active_tab'] = tabs.index(active_tab)
 
@@ -1382,6 +1382,218 @@ if uploaded_files:
                     st.warning("Please select groups with at least 2 samples")
             else:
                 st.warning("Please select at least one replicate group")
+
+    elif active_tab == "Custom Protein Heatmap":
+        st.header("Custom Protein Heatmap")
+
+        # Dataset selection
+        dataset_name = st.selectbox(
+            "Select a dataset",
+            options=list(datasets.keys()),
+            key="custom_heatmap_dataset"
+        )
+
+        if dataset_name and dataset_name in datasets:
+            data = datasets[dataset_name]['normalized']
+
+            if dataset_name in st.session_state['dataset_structures']:
+                structure = st.session_state['dataset_structures'][dataset_name]
+
+                # Get replicate groups
+                replicate_groups = list(structure["replicates"].keys())
+
+                # Group renaming functionality
+                st.subheader("Replicate Group Names")
+                group_names = {}
+                cols = st.columns(3)  # Create 3 columns for compact display
+                for i, group in enumerate(replicate_groups):
+                    col_idx = i % 3
+                    with cols[col_idx]:
+                        group_names[group] = st.text_input(
+                            f"Name for {group}",
+                            value=group,
+                            key=f"custom_group_name_{group}"
+                        )
+
+                # Allow selection of replicate groups
+                selected_groups = st.multiselect(
+                    "Select replicate groups for heat map",
+                    options=replicate_groups,
+                    default=replicate_groups[:2] if len(replicate_groups) >= 2 else replicate_groups
+                )
+
+                if selected_groups:
+                    # Get protein list from user
+                    protein_input = st.text_area(
+                        "Enter protein names (one per line)",
+                        help="Enter gene names or protein IDs, one per line. These will be used to find matching proteins in the dataset."
+                    )
+
+                    if protein_input:
+                        # Process protein list
+                        protein_list = [p.strip() for p in protein_input.split('\n') if p.strip()]
+
+                        # Find matching proteins in the dataset
+                        if 'Gene Name' in data.columns:
+                            matches = data[data['Gene Name'].str.contains('|'.join(protein_list), case=False, na=False)]
+                        else:
+                            matches = data[data.index.str.contains('|'.join(protein_list), case=False, na=False)]
+
+                        if not matches.empty:
+                            st.write(f"Found {len(matches)} matching proteins")
+
+                            # Prepare heatmap data
+                            heatmap_data = pd.DataFrame()
+                            for group in selected_groups:
+                                group_cols = [col for col in structure["replicates"][group] 
+                                            if col.endswith("PG.Quantity")]
+                                if group_cols:
+                                    heatmap_data = pd.concat([heatmap_data, matches[group_cols]], axis=1)
+
+                            if not heatmap_data.empty:
+                                # Calculate group means for averaged heatmap
+                                group_means = pd.DataFrame(index=heatmap_data.index)
+                                for group in selected_groups:
+                                    group_cols = [col for col in structure["replicates"][group] 
+                                                if col.endswith("PG.Quantity")]
+                                    group_means[group] = heatmap_data[group_cols].mean(axis=1)
+
+                                # Create column labels
+                                column_labels = []
+                                for col in heatmap_data.columns:
+                                    sample_name = col.split("]")[1].split(".PG.Quantity")[0].strip()
+                                    for group in selected_groups:
+                                        if col in structure["replicates"][group]:
+                                            column_labels.append(f"{sample_name}\n({group_names[group]})")
+                                            break
+
+                                # Create row labels (gene names if available)
+                                if 'Gene Name' in matches.columns:
+                                    row_labels = matches['Gene Name']
+                                else:
+                                    row_labels = matches.index
+
+                                # Create two tabs for different heatmap views
+                                heatmap_tab1, heatmap_tab2 = st.tabs(["Detailed Heatmap", "Group Average Heatmap"])
+
+                                # Calculate figure size using the specified formula
+                                figure_height = 10 + (len(matches)/10) - 1
+
+                                with heatmap_tab1:
+                                    g1 = sns.clustermap(
+                                        heatmap_data,
+                                        cmap='RdBu_r',
+                                        center=0,
+                                        robust=True,
+                                        xticklabels=column_labels,
+                                        yticklabels=row_labels,
+                                        dendrogram_ratio=(.1, .2),
+                                        cbar_pos=(0.02, .2, .03, .4),
+                                        figsize=(10, figure_height),
+                                        row_cluster=True,
+                                        col_cluster=True
+                                    )
+
+                                    # Adjust y-axis labels
+                                    g1.ax_heatmap.set_yticklabels(
+                                        g1.ax_heatmap.get_yticklabels(),
+                                        fontsize=8,
+                                        rotation=0
+                                    )
+
+                                    # Increase spacing between labels
+                                    g1.fig.subplots_adjust(left=0.3)
+
+                                    # Rotate x-axis labels
+                                    plt.setp(g1.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                                    # Show plot in Streamlit
+                                    st.pyplot(g1.figure)
+                                    plt.close('all')
+
+                                with heatmap_tab2:
+                                    g2 = sns.clustermap(
+                                        group_means,
+                                        cmap='RdBu_r',
+                                        center=0,
+                                        robust=True,
+                                        xticklabels=[group_names[group] for group in selected_groups],
+                                        yticklabels=row_labels,
+                                        dendrogram_ratio=(.1, .2),
+                                        cbar_pos=(0.02, .2, .03, .4),
+                                        figsize=(10, figure_height),                                        row_cluster=True,
+                                        col_cluster=True
+                                    )
+
+                                    # Adjust y-axis labels
+                                    g2.ax_heatmap.set_yticklabels(
+                                        g2.ax_heatmap.get_yticklabels(),
+                                        fontsize=8,
+                                        rotation=0
+                                    )
+
+                                    # Increase spacing between labels
+                                    g2.fig.subplots_adjust(left=0.3)
+
+                                    # Rotate x-axis labels
+                                    plt.setp(g2.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                                    # Show plot in Streamlit
+                                    st.pyplot(g2.figure)
+                                    plt.close('all')
+
+                                # Download buttons
+                                col1, col2, col3 = st.columns(3)
+
+                                # Create buffers for both plots
+                                buf1 = io.BytesIO()
+                                g1.savefig(buf1, format='svg', bbox_inches='tight')
+                                buf1.seek(0)
+
+                                buf2 = io.BytesIO()
+                                g2.savefig(buf2, format='svg', bbox_inches='tight')
+                                buf2.seek(0)
+
+                                with col1:
+                                    st.download_button(
+                                        label="Download Detailed Heatmap (SVG)",
+                                        data=buf1,
+                                        file_name="custom_detailed_heatmap.svg",
+                                        mime="image/svg+xml"
+                                    )
+                                with col2:
+                                    st.download_button(
+                                        label="Download Group Average Heatmap (SVG)",
+                                        data=buf2,
+                                        file_name="custom_group_average_heatmap.svg",
+                                        mime="image/svg+xml"
+                                    )
+                                with col3:
+                                    # Prepare CSV with additional information
+                                    csv_data = pd.concat([
+                                        heatmap_data,
+                                        group_means,
+                                        matches['Gene Name'] if 'Gene Name' in matches.columns else pd.Series(index=matches.index)
+                                    ], axis=1)
+                                    st.download_button(
+                                        label="Download Data (CSV)",
+                                        data=csv_data.to_csv(),
+                                        file_name="custom_heatmap_data.csv",
+                                        mime="text/csv"
+                                    )
+                            else:
+                                st.warning("No data available for selected groups")
+                        else:
+                            st.warning("No matching proteins found in the dataset")
+                else:
+                    st.warning("Please select at least one replicate group")
+            else:
+                st.error("Dataset structure information not found")
+        else:
+            if dataset_name:
+                st.error("Selected dataset not found")
+            else:
+                st.info("Please select a dataset to create a custom protein heatmap")
 
     else:
         st.info("Please upload one or more datasets to begin analysis")
