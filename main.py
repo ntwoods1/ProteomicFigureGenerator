@@ -566,7 +566,7 @@ if uploaded_files:
 
                                         # Create color array
                                         marker_colors = ['red' if up else 'blue' if down else 'gray' 
-                                                            for up, down in zip(significant_up, significant_down)]
+                                                                for up, down in zip(significant_up, significant_down)]
 
                                         # Add protein labels input
                                         proteins_to_label = st.text_area(
@@ -719,14 +719,14 @@ if uploaded_files:
                         st.header("Overlap Analysis")
 
                         try:
-                            # Create dictionaries forstoring gene sets
+                            # Create dictionaries for storing gene sets
                             up_sets = {}
                             down_sets = {}
 
                             # Collect genes from all comparisons
                             for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
                                 if comp_data['significant_up']:
-                                    up_sets[comp_key] = list(comp_data['significant_up'])
+                                    upsets[comp_key] = list(comp_data['significant_up'])
                                 if comp_data['significant_down']:
                                     down_sets[comp_key] = list(comp_data['significant_down'])
 
@@ -1092,32 +1092,150 @@ if uploaded_files:
         st.header("Heat Map")
         dataset_name = st.selectbox(
             "Select dataset for heat map",
-            options=list(datasets.keys()),
-            key="heatmap_dataset"
+            options=list(datasets.keys())
         )
 
         if dataset_name:
             data = datasets[dataset_name]['normalized']
-            numeric_cols = data.select_dtypes(include=[np.number]).columns
+            structure = st.session_state['dataset_structures'][dataset_name]
 
-            selected_columns = st.multiselect(
-                "Select columns for heat map",
-                options=numeric_cols,
-                key="heatmap_columns"
+            # Get replicate groups
+            replicate_groups = list(structure["replicates"].keys())
+
+            # Allow selection of replicate groups
+            selected_groups = st.multiselect(
+                "Select replicate groups for heat map",
+                options=replicate_groups,
+                default=replicate_groups[:2] if len(replicate_groups) > 1 else replicate_groups
             )
 
-            if len(selected_columns) >= 2:
-                try:
-                    correlation_matrix = data[selected_columns].corr()
-                    fig = px.imshow(
-                        correlation_matrix,
-                        title='Correlation Heat Map',
-                        labels=dict(color="Correlation")
-                    )
-                    st.plotly_chart(fig)
+            if selected_groups:
+                # Get quantity columns for selected groups
+                selected_columns = []
+                for group in selected_groups:
+                    selected_columns.extend([col for col in structure["replicates"][group] 
+                                          if col.endswith("PG.Quantity")])
 
-                except Exception as e:
-                    st.error(f"Error creating heat map: {e}")
+                if len(selected_columns) >= 2:
+                    # Add slider for number of proteins
+                    n_proteins = st.slider(
+                        "Number of proteins to display",
+                        min_value=5,
+                        max_value=100,
+                        value=50,
+                        step=5
+                    )
+
+                    try:
+                        # Prepare data for heat map
+                        heatmap_data = data[selected_columns].copy()
+
+                        # Calculate scores for protein selection
+                        scores = pd.DataFrame(index=heatmap_data.index)
+
+                        # Calculate intra-group variation (want this to be low)
+                        intra_cv = pd.DataFrame(index=heatmap_data.index)
+                        for group in selected_groups:
+                            group_cols = [col for col in structure["replicates"][group] 
+                                        if col.endswith("PG.Quantity")]
+                            group_data = heatmap_data[group_cols]
+                            cv = (group_data.std(axis=1) / group_data.mean(axis=1)) * 100
+                            intra_cv[group] = cv
+
+                        # Average intra-group CV (lower is better)
+                        scores['intra_cv'] = intra_cv.mean(axis=1)
+
+                        # Calculate inter-group variation (want this to be high)
+                        group_means = pd.DataFrame(index=heatmap_data.index)
+                        for group in selected_groups:
+                            group_cols = [col for col in structure["replicates"][group] 
+                                        if col.endswith("PG.Quantity")]
+                            group_means[group] = heatmap_data[group_cols].mean(axis=1)
+
+                        # Calculate inter-group variation score
+                        scores['inter_cv'] = (group_means.std(axis=1) / group_means.mean(axis=1)) * 100
+
+                        # Final score: high inter-group variation and low intra-group variation
+                        scores['final_score'] = scores['inter_cv'] / (scores['intra_cv'] + 1)  # Add 1 to avoid division by zero
+
+                        # Select top proteins based on score
+                        top_proteins = scores.nlargest(n_proteins, 'final_score').index
+
+                        # Prepare final data for plotting
+                        plot_data = heatmap_data.loc[top_proteins]
+
+                        # Create column labels that show sample names
+                        column_labels = []
+                        for col in plot_data.columns:
+                            sample_name = col.split("]")[1].split(".PG.Quantity")[0].strip()
+                            for group in selected_groups:
+                                if col in structure["replicates"][group]:
+                                    column_labels.append(f"{sample_name}\n({group})")
+                                    break
+
+                        # Create row labels (gene names if available)
+                        if 'Gene Name' in data.columns:
+                            row_labels = data.loc[top_proteins, 'Gene Name']
+                        else:
+                            row_labels = top_proteins
+
+                        # Create clustermap
+                        plt.figure(figsize=(12, 8))
+                        g = sns.clustermap(
+                            plot_data,
+                            cmap='RdBu_r',
+                            center=0,
+                            robust=True,
+                            xticklabels=column_labels,
+                            yticklabels=row_labels,
+                            dendrogram_ratio=(.1, .2),
+                            cbar_pos=(0.02, .2, .03, .4),
+                            figsize=(15, 10)
+                        )
+
+                        # Rotate x-axis labels
+                        plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                        # Create buffer for SVG download
+                        buf = io.BytesIO()
+                        g.savefig(buf, format='svg', bbox_inches='tight')
+                        buf.seek(0)
+
+                        # Show plot in Streamlit
+                        st.pyplot(g.figure)
+
+                        # Download buttons
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="Download Heatmap as SVG",
+                                data=buf,
+                                file_name="heatmap.svg",
+                                mime="image/svg+xml"
+                            )
+                        with col2:
+                            # Prepare CSV with additional information
+                            csv_data = pd.concat([
+                                plot_data,
+                                scores.loc[top_proteins],
+                                data.loc[top_proteins, 'Gene Name'] if 'Gene Name' in data.columns else pd.Series(index=top_proteins)
+                            ], axis=1)
+                            csv_buffer = csv_data.to_csv(index=True)
+                            st.download_button(
+                                label="Download Data as CSV",
+                                data=csv_buffer,
+                                file_name="heatmap_data.csv",
+                                mime="text/csv"
+                            )
+
+                        plt.close('all')
+
+                    except Exception as e:
+                        st.error(f"Error generating heat map: {str(e)}")
+                else:
+                    st.warning("Please select groups with at least 2 samples")
+            else:
+                st.warning("Please select at least one replicate group")
 
 else:
     st.info("Please upload one or more datasets to begin analysis")
