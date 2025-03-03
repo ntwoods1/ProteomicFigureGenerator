@@ -713,7 +713,7 @@ if uploaded_files:
                                 except Exception as e:
                                     st.error(f"Error generating volcano plot: {str(e)}")
 
-                    # Add UpSet plot after all comparisons
+                    #                    # Add UpSet plot after all comparisons
                     if len(st.session_state['volcano_comparisons']) > 1:
                         st.markdown("---")  # Visual separator
                         st.header("Overlap Analysis")
@@ -734,28 +734,21 @@ if uploaded_files:
                                 st.subheader("Up-regulated Proteins")
                                 st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
 
-                                # Create figure for up-regulated proteins
-                                fig_up = plt.figure(figsize=(12, 6))
-                                up_data = from_contents(up_sets)
-                                upset = UpSet(up_data)
-                                upset.plot(fig=fig_up)
-                                st.pyplot(fig_up)
+                                # Check if we need to regenerate the plot
+                                cache_key = f"upset_up_{dataset_name}"
+                                if cache_key not in st.session_state:
+                                    # Create figure for up-regulated proteins
+                                    fig_up = plt.figure(figsize=(12, 6))
+                                    up_data = from_contents(up_sets)
+                                    upset = UpSet(up_data)
+                                    upset.plot(fig=fig_up)
 
-                                # Create download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Save SVG
-                                    buffer = io.BytesIO()
-                                    fig_up.savefig(buffer, format='svg', bbox_inches='tight')
-                                    buffer.seek(0)
-                                    st.download_button(
-                                        label="Download Plot as SVG",
-                                        data=buffer,
-                                        file_name="upset_plot_upregulated.svg",
-                                        mime="image/svg+xml"
-                                    )
-                                with col2:
-                                    # Create protein list with group memberships
+                                    # Store in session state
+                                    buf = io.BytesIO()
+                                    fig_up.savefig(buf, format='svg', bbox_inches='tight')
+                                    buf.seek(0)
+
+                                    # Create protein list
                                     protein_data = []
                                     all_proteins = set().union(*up_sets.values())
                                     for protein in all_proteins:
@@ -766,41 +759,56 @@ if uploaded_files:
                                             'Number_of_Groups': len(groups)
                                         })
                                     protein_df = pd.DataFrame(protein_data)
-                                    protein_csv = protein_df.to_csv(index=False)
+
+                                    st.session_state[cache_key] = {
+                                        'figure': fig_up,
+                                        'svg_buffer': buf,
+                                        'protein_data': protein_df
+                                    }
+                                    plt.close(fig_up)
+
+                                # Display cached figure
+                                st.pyplot(st.session_state[cache_key]['figure'])
+
+                                # Create download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.download_button(
+                                        label="Download Plot as SVG",
+                                        data=st.session_state[cache_key]['svg_buffer'],
+                                        file_name="upset_plot_upregulated.svg",
+                                        mime="image/svg+xml",
+                                        key=f"up_svg_{dataset_name}"
+                                    )
+                                with col2:
+                                    protein_csv = st.session_state[cache_key]['protein_data'].to_csv(index=False)
                                     st.download_button(
                                         label="Download Protein List",
                                         data=protein_csv,
                                         file_name="upregulated_proteins.csv",
-                                        mime="text/csv"
+                                        mime="text/csv",
+                                        key=f"up_csv_{dataset_name}"
                                     )
-                                plt.close(fig_up)
 
                             if down_sets:
                                 st.subheader("Down-regulated Proteins")
                                 st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
 
-                                # Create figure for down-regulated proteins
-                                fig_down = plt.figure(figsize=(12, 6))
-                                down_data = from_contents(down_sets)
-                                upset = UpSet(down_data)
-                                upset.plot(fig=fig_down)
-                                st.pyplot(fig_down)
+                                # Check if we need to regenerate the plot
+                                cache_key = f"upset_down_{dataset_name}"
+                                if cache_key not in st.session_state:
+                                    # Create figure for down-regulated proteins
+                                    fig_down = plt.figure(figsize=(12, 6))
+                                    down_data = from_contents(down_sets)
+                                    upset = UpSet(down_data)
+                                    upset.plot(fig=fig_down)
 
-                                # Create download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Save SVG
-                                    buffer = io.BytesIO()
-                                    fig_down.savefig(buffer, format='svg', bbox_inches='tight')
-                                    buffer.seek(0)
-                                    st.download_button(
-                                        label="Download Plot as SVG",
-                                        data=buffer,
-                                        file_name="upset_plot_downregulated.svg",
-                                        mime="image/svg+xml"
-                                    )
-                                with col2:
-                                    # Create protein list with group memberships
+                                    # Store in session state
+                                    buf = io.BytesIO()
+                                    fig_down.savefig(buf, format='svg', bbox_inches='tight')
+                                    buf.seek(0)
+
+                                    # Create protein list
                                     protein_data = []
                                     all_proteins = set().union(*down_sets.values())
                                     for protein in all_proteins:
@@ -811,14 +819,36 @@ if uploaded_files:
                                             'Number_of_Groups': len(groups)
                                         })
                                     protein_df = pd.DataFrame(protein_data)
-                                    protein_csv = protein_df.to_csv(index=False)
+
+                                    st.session_state[cache_key] = {
+                                        'figure': fig_down,
+                                        'svg_buffer': buf,
+                                        'protein_data': protein_df
+                                    }
+                                    plt.close(fig_down)
+
+                                # Display cached figure
+                                st.pyplot(st.session_state[cache_key]['figure'])
+
+                                # Create download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.download_button(
+                                        label="Download Plot as SVG",
+                                        data=st.session_state[cache_key]['svg_buffer'],
+                                        file_name="upset_plot_downregulated.svg",
+                                        mime="image/svg+xml",
+                                        key=f"down_svg_{dataset_name}"
+                                    )
+                                with col2:
+                                    protein_csv = st.session_state[cache_key]['protein_data'].to_csv(index=False)
                                     st.download_button(
                                         label="Download Protein List",
                                         data=protein_csv,
                                         file_name="downregulated_proteins.csv",
-                                        mime="text/csv"
+                                        mime="text/csv",
+                                        key=f"down_csv_{dataset_name}"
                                     )
-                                plt.close(fig_down)
 
                         except Exception as e:
                             st.error(f"Error generating overlap analysis: {str(e)}")
