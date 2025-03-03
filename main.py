@@ -721,7 +721,7 @@ if uploaded_files:
                         try:
                             # Create dictionariesfor storing gene sets
                             up_sets = {}
-                            down_sets = {}
+                            down_sets ={}
 
                             # Collect genes from all comparisons
                             for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
@@ -1210,18 +1210,18 @@ if uploaded_files:
                                 cbar_pos=(0.02, .2, .03, .4),
                                 figsize=(15, 10),
                                 row_cluster=True,
-                                col_cluster=True,
-                                yticklabels_kws={'fontsize': 8, 'rotation': 0}  # Adjust font size and rotation
+                                col_cluster=True
                             )
 
-                            # Increase spacing between y-axis labels
+                            # Adjust y-axis labels after creation
                             g1.ax_heatmap.set_yticklabels(
                                 g1.ax_heatmap.get_yticklabels(),
                                 fontsize=8,
-                                rotation=0,
-                                va='center'
+                                rotation=0
                             )
-                            plt.subplots_adjust(left=0.3)  # Increase left margin for labels
+
+                            # Increase spacing between labels
+                            g1.fig.subplots_adjust(left=0.3)  # Increase left margin for labels
 
                             # Rotate x-axis labels
                             plt.setp(g1.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
@@ -1244,18 +1244,18 @@ if uploaded_files:
                                 cbar_pos=(0.02, .2, .03, .4),
                                 figsize=(12, 10),
                                 row_cluster=True,
-                                col_cluster=True,
-                                yticklabels_kws={'fontsize': 8, 'rotation': 0}  # Adjust font size and rotation
+                                col_cluster=True
                             )
 
-                            # Increase spacing between y-axis labels
+                            # Adjust y-axis labels after creation
                             g2.ax_heatmap.set_yticklabels(
                                 g2.ax_heatmap.get_yticklabels(),
                                 fontsize=8,
-                                rotation=0,
-                                va='center'
+                                rotation=0
                             )
-                            plt.subplots_adjust(left=0.3)  # Increase left margin for labels
+
+                            # Increase spacing between labels
+                            g2.fig.subplots_adjust(left=0.3)  # Increase left margin for labels
 
                             # Rotate x-axis labels
                             plt.setp(g2.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
