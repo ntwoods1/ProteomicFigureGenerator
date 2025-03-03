@@ -719,14 +719,14 @@ if uploaded_files:
                         st.header("Overlap Analysis")
 
                         try:
-                            # Create dictionaries for storing gene sets
+                            # Create dictionariesfor storing gene sets
                             up_sets = {}
                             down_sets = {}
 
                             # Collect genes from all comparisons
                             for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
                                 if comp_data['significant_up']:
-                                    upsets[comp_key] = list(comp_data['significant_up'])
+                                    up_sets[comp_key] = list(comp_data['significant_up'])
                                 if comp_data['significant_down']:
                                     down_sets[comp_key] = list(comp_data['significant_down'])
 
@@ -1102,6 +1102,19 @@ if uploaded_files:
             # Get replicate groups
             replicate_groups = list(structure["replicates"].keys())
 
+            # Group renaming functionality
+            st.subheader("Replicate Group Names")
+            group_names = {}
+            cols = st.columns(3)  # Create 3 columns for compact display
+            for i, group in enumerate(replicate_groups):
+                col_idx = i % 3
+                with cols[col_idx]:
+                    group_names[group] = st.text_input(
+                        f"Name for {group}",
+                        value=group,
+                        key=f"group_name_{group}"
+                    )
+
             # Allow selection of replicate groups
             selected_groups = st.multiselect(
                 "Select replicate groups for heat map",
@@ -1163,6 +1176,7 @@ if uploaded_files:
 
                         # Prepare final data for plotting
                         plot_data = heatmap_data.loc[top_proteins]
+                        plot_data_means = group_means.loc[top_proteins]
 
                         # Create column labels that show sample names
                         column_labels = []
@@ -1170,7 +1184,7 @@ if uploaded_files:
                             sample_name = col.split("]")[1].split(".PG.Quantity")[0].strip()
                             for group in selected_groups:
                                 if col in structure["replicates"][group]:
-                                    column_labels.append(f"{sample_name}\n({group})")
+                                    column_labels.append(f"{sample_name}\n({group_names[group]})")
                                     break
 
                         # Create row labels (gene names if available)
@@ -1179,44 +1193,108 @@ if uploaded_files:
                         else:
                             row_labels = top_proteins
 
-                        # Create clustermap
-                        plt.figure(figsize=(12, 8))
-                        g = sns.clustermap(
-                            plot_data,
-                            cmap='RdBu_r',
-                            center=0,
-                            robust=True,
-                            xticklabels=column_labels,
-                            yticklabels=row_labels,
-                            dendrogram_ratio=(.1, .2),
-                            cbar_pos=(0.02, .2, .03, .4),
-                            figsize=(15, 10)
-                        )
+                        # Create two tabs for different heatmap views
+                        heatmap_tab1, heatmap_tab2 = st.tabs(["Detailed Heatmap", "Group Average Heatmap"])
 
-                        # Rotate x-axis labels
-                        plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+                        with heatmap_tab1:
+                            # Create detailed clustermap
+                            plt.figure(figsize=(12, 8))
+                            g1 = sns.clustermap(
+                                plot_data,
+                                cmap='RdBu_r',
+                                center=0,
+                                robust=True,
+                                xticklabels=column_labels,
+                                yticklabels=row_labels,
+                                dendrogram_ratio=(.1, .2),
+                                cbar_pos=(0.02, .2, .03, .4),
+                                figsize=(15, 10),
+                                row_cluster=True,
+                                col_cluster=True,
+                                yticklabels_kws={'fontsize': 8, 'rotation': 0}  # Adjust font size and rotation
+                            )
 
-                        # Create buffer for SVG download
-                        buf = io.BytesIO()
-                        g.savefig(buf, format='svg', bbox_inches='tight')
-                        buf.seek(0)
+                            # Increase spacing between y-axis labels
+                            g1.ax_heatmap.set_yticklabels(
+                                g1.ax_heatmap.get_yticklabels(),
+                                fontsize=8,
+                                rotation=0,
+                                va='center'
+                            )
+                            plt.subplots_adjust(left=0.3)  # Increase left margin for labels
 
-                        # Show plot in Streamlit
-                        st.pyplot(g.figure)
+                            # Rotate x-axis labels
+                            plt.setp(g1.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                            # Show plot in Streamlit
+                            st.pyplot(g1.figure)
+                            plt.close('all')
+
+                        with heatmap_tab2:
+                            # Create averaged clustermap
+                            plt.figure(figsize=(12, 8))
+                            g2 = sns.clustermap(
+                                plot_data_means,
+                                cmap='RdBu_r',
+                                center=0,
+                                robust=True,
+                                xticklabels=[group_names[group] for group in selected_groups],
+                                yticklabels=row_labels,
+                                dendrogram_ratio=(.1, .2),
+                                cbar_pos=(0.02, .2, .03, .4),
+                                figsize=(12, 10),
+                                row_cluster=True,
+                                col_cluster=True,
+                                yticklabels_kws={'fontsize': 8, 'rotation': 0}  # Adjust font size and rotation
+                            )
+
+                            # Increase spacing between y-axis labels
+                            g2.ax_heatmap.set_yticklabels(
+                                g2.ax_heatmap.get_yticklabels(),
+                                fontsize=8,
+                                rotation=0,
+                                va='center'
+                            )
+                            plt.subplots_adjust(left=0.3)  # Increase left margin for labels
+
+                            # Rotate x-axis labels
+                            plt.setp(g2.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                            # Show plot in Streamlit
+                            st.pyplot(g2.figure)
+                            plt.close('all')
 
                         # Download buttons
-                        col1, col2 = st.columns(2)
+                        col1, col2, col3 = st.columns(3)
+
+                        # Create buffers for both plots
+                        buf1 = io.BytesIO()
+                        g1.savefig(buf1, format='svg', bbox_inches='tight')
+                        buf1.seek(0)
+
+                        buf2 = io.BytesIO()
+                        g2.savefig(buf2, format='svg', bbox_inches='tight')
+                        buf2.seek(0)
+
                         with col1:
                             st.download_button(
-                                label="Download Heatmap as SVG",
-                                data=buf,
-                                file_name="heatmap.svg",
+                                label="Download Detailed Heatmap (SVG)",
+                                data=buf1,
+                                file_name="detailed_heatmap.svg",
                                 mime="image/svg+xml"
                             )
                         with col2:
+                            st.download_button(
+                                label="Download Group Average Heatmap (SVG)",
+                                data=buf2,
+                                file_name="group_average_heatmap.svg",
+                                mime="image/svg+xml"
+                            )
+                        with col3:
                             # Prepare CSV with additional information
                             csv_data = pd.concat([
                                 plot_data,
+                                plot_data_means,
                                 scores.loc[top_proteins],
                                 data.loc[top_proteins, 'Gene Name'] if 'Gene Name' in data.columns else pd.Series(index=top_proteins)
                             ], axis=1)
@@ -1237,5 +1315,5 @@ if uploaded_files:
             else:
                 st.warning("Please select at least one replicate group")
 
-else:
-    st.info("Please upload one or more datasets to begin analysis")
+    else:
+        st.info("Please upload one or more datasets to begin analysis")
