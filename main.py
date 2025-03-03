@@ -8,7 +8,7 @@ import tempfile
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
 import seaborn as sns
-from scipy.stats import ttest_ind
+from scipy.stats import ttest_ind, stats
 from scipy.cluster.hierarchy import linkage, dendrogram
 import io
 from utils.data_processing import (
@@ -719,9 +719,9 @@ if uploaded_files:
                         st.header("Overlap Analysis")
 
                         try:
-                            # Create dictionariesfor storing gene sets
+                            # Create dictionaries for storing gene sets
                             up_sets = {}
-                            down_sets ={}
+                            down_sets = {}
 
                             # Collect genes from all comparisons
                             for comp_key, comp_data in st.session_state['volcano_comparisons'].items():
@@ -730,94 +730,17 @@ if uploaded_files:
                                 if comp_data['significant_down']:
                                     down_sets[comp_key] = list(comp_data['significant_down'])
 
-                            # Generate overlaps visualizations
                             if up_sets:
-                                st.subheader("Up-regulated Proteins")
-                                st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
-
-                                # Create figure
-                                fig_up = plt.figure(figsize=(12, 6))
-                                upset = UpSet(from_contents(up_sets))
-                                upset.plot(fig=fig_up)
-                                st.pyplot(fig_up)
-
-                                # Create download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Save SVG
-                                    buffer = io.BytesIO()
-                                    fig_up.savefig(buffer, format='svg', bbox_inches='tight')
-                                    buffer.seek(0)
-                                    st.download_button(
-                                        label="Download Plot as SVG",
-                                        data=buffer,
-                                        file_name="upset_plot_upregulated.svg",
-                                        mime="image/svg+xml"
-                                    )
-                                with col2:
-                                    # Create protein list with group memberships
-                                    protein_data = []
-                                    all_proteins = set().union(*up_sets.values())
-                                    for protein in all_proteins:
-                                        groups = [group for group, proteins in up_sets.items() if protein in proteins]
-                                        protein_data.append({
-                                            'Protein': protein,
-                                            'Groups': ';'.join(groups),
-                                            'Number_of_Groups': len(groups)
-                                        })
-                                    protein_df = pd.DataFrame(protein_data)
-                                    protein_csv = protein_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="Download Protein List",
-                                        data=protein_csv,
-                                        file_name="upregulated_proteins.csv",
-                                        mime="text/csv"
-                                    )
-                                plt.close(fig_up)
+                                st.subheader("Upregulated Genes Overlap")
+                                up_data = from_contents(up_sets)
+                                up_plot = UpSet(up_data)
+                                st.pyplot(up_plot.plot())
 
                             if down_sets:
-                                st.subheader("Down-regulated Proteins")
-                                st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
-
-                                # Create figure
-                                fig_down = plt.figure(figsize=(12, 6))
-                                upset = UpSet(from_contents(down_sets))
-                                upset.plot(fig=fig_down)
-                                st.pyplot(fig_down)
-
-                                # Create download buttons
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    # Save SVG
-                                    buffer = io.BytesIO()
-                                    fig_down.savefig(buffer, format='svg', bbox_inches='tight')
-                                    buffer.seek(0)
-                                    st.download_button(
-                                        label="Download Plot as SVG",
-                                        data=buffer,
-                                        file_name="upset_plot_downregulated.svg",
-                                        mime="image/svg+xml"
-                                    )
-                                with col2:
-                                    # Create protein list with group memberships
-                                    protein_data = []
-                                    all_proteins = set().union(*down_sets.values())
-                                    for protein in all_proteins:
-                                        groups = [group for group, proteins in down_sets.items() if protein in proteins]
-                                        protein_data.append({
-                                            'Protein': protein,
-                                            'Groups': ';'.join(groups),
-                                            'Number_of_Groups': len(groups)
-                                        })
-                                    protein_df = pd.DataFrame(protein_data)
-                                    protein_csv = protein_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="Download Protein List",
-                                        data=protein_csv,
-                                        file_name="downregulated_proteins.csv",
-                                        mime="text/csv"
-                                    )
-                                plt.close(fig_down)
+                                st.subheader("Downregulated Genes Overlap")
+                                down_data = from_contents(down_sets)
+                                down_plot = UpSet(down_data)
+                                st.pyplot(down_plot.plot())
 
                         except Exception as e:
                             st.error(f"Error generating overlap analysis: {str(e)}")
@@ -1146,7 +1069,44 @@ if uploaded_files:
                         # Calculate scores for protein selection
                         scores = pd.DataFrame(index=heatmap_data.index)
 
-                        # Calculate intra-group variation (want this to be low)
+                        # Calculate group means for each protein
+                        group_means = pd.DataFrame(index=heatmap_data.index)
+                        for group in selected_groups:
+                            group_cols = [col for col in structure["replicates"][group] 
+                                        if col.endswith("PG.Quantity")]
+                            group_means[group] = heatmap_data[group_cols].mean(axis=1)
+
+                        # Calculate fold changes between all pairs of groups
+                        fold_changes = []
+                        for g1, g2 in combinations(selected_groups, 2):
+                            fc = np.abs(np.log2(group_means[g2] / group_means[g1]))
+                            fold_changes.append(fc)
+
+                        # Use maximum fold change as part of the score
+                        scores['max_fold_change'] = pd.concat(fold_changes, axis=1).max(axis=1)
+
+                        # Calculate F-statistic and p-value using ANOVA
+                        f_stats = []
+                        p_values = []
+                        for protein in heatmap_data.index:
+                            group_data = []
+                            for group in selected_groups:
+                                group_cols = [col for col in structure["replicates"][group] 
+                                            if col.endswith("PG.Quantity")]
+                                group_data.append(heatmap_data.loc[protein, group_cols])
+                            try:
+                                f_stat, p_val = stats.f_oneway(*group_data)
+                                f_stats.append(f_stat)
+                                p_values.append(p_val)
+                            except:
+                                f_stats.append(0)
+                                p_values.append(1)
+
+                        scores['f_statistic'] = f_stats
+                        scores['p_value'] = p_values
+                        scores['-log10_p'] = -np.log10(scores['p_value'].clip(1e-10, 1))
+
+                        # Calculate intra-group variation
                         intra_cv = pd.DataFrame(index=heatmap_data.index)
                         for group in selected_groups:
                             group_cols = [col for col in structure["replicates"][group] 
@@ -1158,18 +1118,20 @@ if uploaded_files:
                         # Average intra-group CV (lower is better)
                         scores['intra_cv'] = intra_cv.mean(axis=1)
 
-                        # Calculate inter-group variation (want this to be high)
-                        group_means = pd.DataFrame(index=heatmap_data.index)
-                        for group in selected_groups:
-                            group_cols = [col for col in structure["replicates"][group] 
-                                        if col.endswith("PG.Quantity")]
-                            group_means[group] = heatmap_data[group_cols].mean(axis=1)
+                        # Final score: combine statistical significance, fold change, and reproducibility
+                        # Higher score for:
+                        # - Lower p-values (higher -log10_p)
+                        # - Higher fold changes
+                        # - Lower intra-group variation
+                        scores['final_score'] = (
+                            scores['-log10_p'] * 
+                            scores['max_fold_change'] * 
+                            (100 / (scores['intra_cv'] + 10))  # Add 10 to avoid division by very small numbers
+                        )
 
-                        # Calculate inter-group variation score
-                        scores['inter_cv'] = (group_means.std(axis=1) / group_means.mean(axis=1)) * 100
-
-                        # Final score: high inter-group variation and low intra-group variation
-                        scores['final_score'] = scores['inter_cv'] / (scores['intra_cv'] + 1)  # Add 1 to avoid division by zero
+                        # Add minimum fold change filter
+                        min_fold_change = 0.5  # log2 fold change threshold
+                        scores.loc[scores['max_fold_change'] < min_fold_change, 'final_score'] = 0
 
                         # Select top proteins based on score
                         top_proteins = scores.nlargest(n_proteins, 'final_score').index
