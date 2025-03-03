@@ -852,14 +852,15 @@ if uploaded_files:
 
                                     except Exception as e:
                                         st.error(f"Error generating overlap analysis: {str(e)}")
-
                                 else:
-                                    st.warning("No replicate groups found in the dataset")
+                                    st.warning("No multiple comparisons found for overlap analysis")
                             else:
-                                if dataset_name:
-                                    st.error("Selected dataset not found")
-                                else:
-                                    st.info("Please select a dataset to create a volcano plot")
+                                st.warning("No replicate groups found in the dataset")
+                        else:
+                            if dataset_name:
+                                st.error("Selected dataset not found")
+                            else:
+                                st.info("Please select a dataset to create a volcano plot")
 
     elif active_tab == "PCA":
         st.header("PCA Analysis")
@@ -999,7 +1000,6 @@ if uploaded_files:
                                     label=group,
                                     alpha=0.7
                                 )
-
                             ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
                             ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
                             ax1.set_title('PCA Score Plot')
@@ -1156,91 +1156,120 @@ if uploaded_files:
                 selected_columns = []
                 for group in selected_groups:
                     selected_columns.extend([col for col in structure["replicates"][group] 
-                                          if col.endswith("PG.Quantity")])
+                                              if col.endswith("PG.Quantity")])
 
                 if len(selected_columns) >= 2:
-                    # Add slider for number of proteins
-                    n_proteins = st.slider(
-                        "Number of proteins to display",
-                        min_value=5,
-                        max_value=100,
-                        value=50,
-                        step=5
-                    )
+                    # Add options for sample ordering and protein selection
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        sample_order = st.radio(
+                            "Sample ordering method",
+                            ["Clustering", "Selection order"],
+                            key="sample_order"
+                        )
+
+                    with col2:
+                        custom_proteins = st.text_area(
+                            "Enter protein names to display (one per line, leave empty to use automatic selection)",
+                            help="Enter gene names or protein IDs, one per line. These proteins will be displayed instead of the automatically selected ones."
+                        )
+
+                    # Add slider for number of proteins (only shown if custom proteins not provided)
+                    if not custom_proteins.strip():
+                        n_proteins = st.slider(
+                            "Number of proteins to display",
+                            min_value=5,
+                            max_value=100,
+                            value=50,
+                            step=5
+                        )
 
                     try:
                         # Prepare data for heat map
                         heatmap_data = data[selected_columns].copy()
 
-                        # Calculate scores for protein selection
-                        scores = pd.DataFrame(index=heatmap_data.index)
+                        # Process custom protein list if provided
+                        if custom_proteins.strip():
+                            custom_protein_list = [p.strip() for p in custom_proteins.split('\n') if p.strip()]
+                            if 'Gene Name' in data.columns:
+                                # Match by gene name
+                                mask = data['Gene Name'].isin(custom_protein_list)
+                                top_proteins = data[mask].index
+                            else:
+                                # Match by protein ID
+                                top_proteins = [p for p in custom_protein_list if p in heatmap_data.index]
+                            n_proteins = len(top_proteins)
+                        else:
+                            # Calculate scores for protein selection
+                            scores = pd.DataFrame(index=heatmap_data.index)
 
-                        # Calculate group means for each protein
-                        group_means = pd.DataFrame(index=heatmap_data.index)
-                        for group in selected_groups:
-                            group_cols = [col for col in structure["replicates"][group] 
-                                        if col.endswith("PG.Quantity")]
-                            group_means[group] = heatmap_data[group_cols].mean(axis=1)
-
-                        # Calculate fold changes between all pairs of groups
-                        fold_changes = []
-                        for g1, g2 in combinations(selected_groups, 2):
-                            fc = np.abs(np.log2(group_means[g2] / group_means[g1]))
-                            fold_changes.append(fc)
-
-                        # Use maximum fold change as part of the score
-                        scores['max_fold_change'] = pd.concat(fold_changes, axis=1).max(axis=1)
-
-                        # Calculate F-statistic and p-value using ANOVA
-                        f_stats = []
-                        p_values = []
-                        for protein in heatmap_data.index:
-                            group_data = []
+                            # Calculate group means for each protein
+                            group_means = pd.DataFrame(index=heatmap_data.index)
                             for group in selected_groups:
                                 group_cols = [col for col in structure["replicates"][group] 
                                             if col.endswith("PG.Quantity")]
-                                group_data.append(heatmap_data.loc[protein, group_cols])
-                            try:
-                                f_stat, p_val = stats.f_oneway(*group_data)
-                                f_stats.append(f_stat)
-                                p_values.append(p_val)
-                            except:
-                                f_stats.append(0)
-                                p_values.append(1)
+                                group_means[group] = heatmap_data[group_cols].mean(axis=1)
 
-                        scores['f_statistic'] = f_stats
-                        scores['p_value'] = p_values
-                        scores['-log10_p'] = -np.log10(scores['p_value'].clip(1e-10, 1))
+                            # Calculate fold changes between all pairs of groups
+                            fold_changes = []
+                            for g1, g2 in combinations(selected_groups, 2):
+                                fc = np.abs(np.log2(group_means[g2] / group_means[g1]))
+                                fold_changes.append(fc)
 
-                        # Calculate intra-group variation
-                        intra_cv = pd.DataFrame(index=heatmap_data.index)
-                        for group in selected_groups:
-                            group_cols = [col for col in structure["replicates"][group] 
-                                        if col.endswith("PG.Quantity")]
-                            group_data = heatmap_data[group_cols]
-                            cv = (group_data.std(axis=1) / group_data.mean(axis=1)) * 100
-                            intra_cv[group] = cv
+                            # Use maximum fold change as part of the score
+                            scores['max_fold_change'] = pd.concat(fold_changes, axis=1).max(axis=1)
 
-                        # Average intra-group CV (lower is better)
-                        scores['intra_cv'] = intra_cv.mean(axis=1)
+                            # Calculate F-statistic and p-value using ANOVA
+                            f_stats = []
+                            p_values = []
+                            for protein in heatmap_data.index:
+                                group_data = []
+                                for group in selected_groups:
+                                    group_cols = [col for col in structure["replicates"][group] 
+                                                if col.endswith("PG.Quantity")]
+                                    group_data.append(heatmap_data.loc[protein, group_cols])
+                                try:
+                                    f_stat, p_val = stats.f_oneway(*group_data)
+                                    f_stats.append(f_stat)
+                                    p_values.append(p_val)
+                                except:
+                                    f_stats.append(0)
+                                    p_values.append(1)
 
-                        # Final score: combine statistical significance, fold change, and reproducibility
-                        # Higher score for:
-                        # - Lower p-values (higher -log10_p)
-                        # - Higher fold changes
-                        # - Lower intra-group variation
-                        scores['final_score'] = (
-                            scores['-log10_p'] * 
-                            scores['max_fold_change'] * 
-                            (100 / (scores['intra_cv'] + 10))  # Add 10 to avoid division by very small numbers
-                        )
+                            scores['f_statistic'] = f_stats
+                            scores['p_value'] = p_values
+                            scores['-log10_p'] = -np.log10(scores['p_value'].clip(1e-10, 1))
 
-                        # Add minimum fold change filter
-                        min_fold_change = 0.5  # log2 fold change threshold
-                        scores.loc[scores['max_fold_change'] < min_fold_change, 'final_score'] = 0
+                            # Calculate intra-group variation
+                            intra_cv = pd.DataFrame(index=heatmap_data.index)
+                            for group in selected_groups:
+                                group_cols = [col for col in structure["replicates"][group] 
+                                            if col.endswith("PG.Quantity")]
+                                group_data = heatmap_data[group_cols]
+                                cv = (group_data.std(axis=1) / group_data.mean(axis=1)) * 100
+                                intra_cv[group] = cv
 
-                        # Select top proteins based on score
-                        top_proteins = scores.nlargest(n_proteins, 'final_score').index
+                            # Average intra-group CV (lower is better)
+                            scores['intra_cv'] = intra_cv.mean(axis=1)
+
+                            # Final score: combine statistical significance, fold change, and reproducibility
+                            # Higher score for:
+                            # - Lower p-values (higher -log10_p)
+                            # - Higher fold changes
+                            # - Lower intra-group variation
+                            scores['final_score'] = (
+                                scores['-log10_p'] * 
+                                scores['max_fold_change'] * 
+                                (100 / (scores['intra_cv'] + 10))  # Add 10 to avoid division by very small numbers
+                            )
+
+                            # Add minimum fold change filter
+                            min_fold_change = 0.5  # log2 fold change threshold
+                            scores.loc[scores['max_fold_change'] < min_fold_change, 'final_score'] = 0
+
+                            # Select top proteins based on score
+                            top_proteins = scores.nlargest(n_proteins, 'final_score').index
 
                         # Prepare final data for plotting
                         plot_data = heatmap_data.loc[top_proteins]
@@ -1265,25 +1294,26 @@ if uploaded_files:
                         heatmap_tab1, heatmap_tab2 = st.tabs(["Detailed Heatmap", "Group Average Heatmap"])
 
                         # Calculate figure size using the specified formula
-                        # width is fixed at 10, height is dynamic based on number of proteins (n)
                         figure_height = 10 + (n_proteins/10) - 1
 
                         with heatmap_tab1:
-                            g1 = sns.clustermap(
-                                plot_data,
-                                cmap='RdBu_r',
-                                center=0,
-                                robust=True,
-                                xticklabels=column_labels,
-                                yticklabels=row_labels,
-                                dendrogram_ratio=(.1, .2),
-                                cbar_pos=(0.02, .2, .03, .4),
-                                figsize=(10, figure_height),
-                                row_cluster=True,
-                                col_cluster=True
-                            )
+                            detailed_clustermap_params = {
+                                'data': plot_data,
+                                'cmap': 'RdBu_r',
+                                'center': 0,
+                                'robust': True,
+                                'yticklabels': row_labels,
+                                'xticklabels': column_labels,
+                                'dendrogram_ratio': (.1, .2),
+                                'cbar_pos': (0.02, .2, .03, .4),
+                                'figsize': (10, figure_height),
+                                'row_cluster': True,
+                                'col_cluster': sample_order == "Clustering"
+                            }
 
-                            # Adjust y-axis labels after creation
+                            g1 = sns.clustermap(**detailed_clustermap_params)
+
+                            # Adjust y-axis labels
                             g1.ax_heatmap.set_yticklabels(
                                 g1.ax_heatmap.get_yticklabels(),
                                 fontsize=8,
@@ -1301,21 +1331,23 @@ if uploaded_files:
                             plt.close('all')
 
                         with heatmap_tab2:
-                            g2 = sns.clustermap(
-                                plot_data_means,
-                                cmap='RdBu_r',
-                                center=0,
-                                robust=True,
-                                xticklabels=[group_names[group] for group in selected_groups],
-                                yticklabels=row_labels,
-                                dendrogram_ratio=(.1, .2),
-                                cbar_pos=(0.02, .2, .03, .4),
-                                figsize=(10, figure_height),
-                                row_cluster=True,
-                                col_cluster=True
-                            )
+                            group_clustermap_params = {
+                                'data': plot_data_means,
+                                'cmap': 'RdBu_r',
+                                'center': 0,
+                                'robust': True,
+                                'yticklabels': row_labels,
+                                'xticklabels': [group_names[group] for group in selected_groups],
+                                'dendrogram_ratio': (.1, .2),
+                                'cbar_pos': (0.02, .2, .03, .4),
+                                'figsize': (10, figure_height),
+                                'row_cluster': True,
+                                'col_cluster': sample_order == "Clustering"
+                            }
 
-                            # Adjust y-axis labels after creation
+                            g2 = sns.clustermap(**group_clustermap_params)
+
+                            # Adjust y-axis labels
                             g2.ax_heatmap.set_yticklabels(
                                 g2.ax_heatmap.get_yticklabels(),
                                 fontsize=8,
@@ -1363,19 +1395,17 @@ if uploaded_files:
                             csv_data = pd.concat([
                                 plot_data,
                                 plot_data_means,
-                                scores.loc[top_proteins],
-                                data.loc[top_proteins, 'Gene Name'] if 'Gene Name' in data.columns else pd.Series(index=top_proteins)
+                                scores.loc[plot_data.index] if not custom_proteins else pd.DataFrame(index=plot_data.index),
+                                data.loc[plot_data.index, 'Gene Name'] if 'Gene Name' in data.columns else pd.Series(index=plot_data.index)
                             ], axis=1)
+
                             csv_buffer = csv_data.to_csv(index=True)
                             st.download_button(
-                                label="Download Data as CSV",
+                                label="Download Results as CSV",
                                 data=csv_buffer,
                                 file_name="heatmap_data.csv",
                                 mime="text/csv"
                             )
-
-                        plt.close('all')
-
                     except Exception as e:
                         st.error(f"Error generating heat map: {str(e)}")
                 else:
