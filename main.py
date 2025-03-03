@@ -731,16 +731,94 @@ if uploaded_files:
                                     down_sets[comp_key] = list(comp_data['significant_down'])
 
                             if up_sets:
-                                st.subheader("Upregulated Genes Overlap")
+                                st.subheader("Up-regulated Proteins")
+                                st.write(f"Overlap analysis of up-regulated proteins across {len(up_sets)} comparisons")
+
+                                # Create figure for up-regulated proteins
+                                fig_up = plt.figure(figsize=(12, 6))
                                 up_data = from_contents(up_sets)
-                                up_plot = UpSet(up_data)
-                                st.pyplot(up_plot.plot())
+                                upset = UpSet(up_data)
+                                upset.plot(fig=fig_up)
+                                st.pyplot(fig_up)
+
+                                # Create download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    # Save SVG
+                                    buffer = io.BytesIO()
+                                    fig_up.savefig(buffer, format='svg', bbox_inches='tight')
+                                    buffer.seek(0)
+                                    st.download_button(
+                                        label="Download Plot as SVG",
+                                        data=buffer,
+                                        file_name="upset_plot_upregulated.svg",
+                                        mime="image/svg+xml"
+                                    )
+                                with col2:
+                                    # Create protein list with group memberships
+                                    protein_data = []
+                                    all_proteins = set().union(*up_sets.values())
+                                    for protein in all_proteins:
+                                        groups = [group for group, proteins in up_sets.items() if protein in proteins]
+                                        protein_data.append({
+                                            'Protein': protein,
+                                            'Groups': ';'.join(groups),
+                                            'Number_of_Groups': len(groups)
+                                        })
+                                    protein_df = pd.DataFrame(protein_data)
+                                    protein_csv = protein_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="Download Protein List",
+                                        data=protein_csv,
+                                        file_name="upregulated_proteins.csv",
+                                        mime="text/csv"
+                                    )
+                                plt.close(fig_up)
 
                             if down_sets:
-                                st.subheader("Downregulated Genes Overlap")
+                                st.subheader("Down-regulated Proteins")
+                                st.write(f"Overlap analysis of down-regulated proteins across {len(down_sets)} comparisons")
+
+                                # Create figure for down-regulated proteins
+                                fig_down = plt.figure(figsize=(12, 6))
                                 down_data = from_contents(down_sets)
-                                down_plot = UpSet(down_data)
-                                st.pyplot(down_plot.plot())
+                                upset = UpSet(down_data)
+                                upset.plot(fig=fig_down)
+                                st.pyplot(fig_down)
+
+                                # Create download buttons
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    # Save SVG
+                                    buffer = io.BytesIO()
+                                    fig_down.savefig(buffer, format='svg', bbox_inches='tight')
+                                    buffer.seek(0)
+                                    st.download_button(
+                                        label="Download Plot as SVG",
+                                        data=buffer,
+                                        file_name="upset_plot_downregulated.svg",
+                                        mime="image/svg+xml"
+                                    )
+                                with col2:
+                                    # Create protein list with group memberships
+                                    protein_data = []
+                                    all_proteins = set().union(*down_sets.values())
+                                    for protein in all_proteins:
+                                        groups = [group for group, proteins in down_sets.items() if protein in proteins]
+                                        protein_data.append({
+                                            'Protein': protein,
+                                            'Groups': ';'.join(groups),
+                                            'Number_of_Groups': len(groups)
+                                        })
+                                    protein_df = pd.DataFrame(protein_data)
+                                    protein_csv = protein_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="Download Protein List",
+                                        data=protein_csv,
+                                        file_name="downregulated_proteins.csv",
+                                        mime="text/csv"
+                                    )
+                                plt.close(fig_down)
 
                         except Exception as e:
                             st.error(f"Error generating overlap analysis: {str(e)}")
