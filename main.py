@@ -1756,8 +1756,11 @@ if uploaded_files:
 
                     with col4:
                         show_fold_change = st.toggle("Show fold change vs control", value=False)
-                        if show_fold_change:
-                            use_log2 = st.toggle("Use log2 fold change", value=False)
+
+                    # Define use_log2 with a default value
+                    use_log2 = False 
+                    if show_fold_change:
+                        use_log2 = st.toggle("Use log2 fold change", value=False)
 
                     if stat_test == "T-test vs Control":
                         control_group = st.selectbox(
