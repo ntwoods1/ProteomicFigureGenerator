@@ -418,14 +418,23 @@ if uploaded_files:
             if apply_smoothing:
                 status_container.text("Applying data smoothing...")
                 try:
+                    # Get only PG.Quantity columns for smoothing
+                    quantity_cols = [col for col in final_filtered_data.columns if col.endswith("PG.Quantity")]
+                    data_to_smooth = final_filtered_data[quantity_cols].copy()
+                    
+                    # Apply smoothing only to quantity columns
                     if smoothing_method == "Moving Average":
-                        final_filtered_data = apply_moving_average(final_filtered_data, window_size)
+                        smoothed_quantities = apply_moving_average(data_to_smooth, window_size)
                     elif smoothing_method == "Savitzky-Golay":
-                        final_filtered_data = apply_savitzky_golay(final_filtered_data, window_length, polyorder)
+                        smoothed_quantities = apply_savitzky_golay(data_to_smooth, window_length, polyorder)
                     elif smoothing_method == "LOESS":
-                        final_filtered_data = apply_loess_smoothing(final_filtered_data, frac, iterations)
+                        smoothed_quantities = apply_loess_smoothing(data_to_smooth, frac, iterations)
                     else:  # Exponential
-                        final_filtered_data = apply_exponential_smoothing(final_filtered_data, alpha)
+                        smoothed_quantities = apply_exponential_smoothing(data_to_smooth, alpha)
+                    
+                    # Create new DataFrame with smoothed quantities and original non-quantity columns 
+                    final_filtered_data = final_filtered_data.copy()
+                    final_filtered_data[quantity_cols] = smoothed_quantities
                 except Exception as e:
                     st.error(f"Error during smoothing: {str(e)}")
 
@@ -621,16 +630,19 @@ if uploaded_files:
 
                 # Show example of smoothing effect
                 st.write("**Example of Smoothing Effect**")
+                
+                # Get only PG.Quantity columns for visualization
+                quantity_cols = [col for col in final_data.columns if col.endswith("PG.Quantity")]
+                
                 # Select a random protein with sufficient variation
                 example_protein = final_data.sample(n=1).index[0]
                 
                 # Create comparison plot
                 fig, ax = plt.subplots(figsize=(10, 5))
                 
-                # Plot original and smoothed data
-                quantity_cols = [col for col in final_data.columns if col.endswith("PG.Quantity")]
-                original_values = final_data.loc[example_protein, quantity_cols]
-                smoothed_values = normalized_data.loc[example_protein, quantity_cols]
+                # Get original and smoothed values for quantity columns only
+                original_values = processed_data['missing_handled'].loc[example_protein, quantity_cols]
+                smoothed_values = processed_data['smoothed'].loc[example_protein, quantity_cols]
                 
                 x = range(len(quantity_cols))
                 ax.plot(x, original_values, 'o-', label='Original', alpha=0.5)
