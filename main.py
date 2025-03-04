@@ -398,7 +398,7 @@ if uploaded_files:
             continue
 
     # Display tabs
-    tabs = ["Data Overview", "Volcano Plot", "PCA", "Heat Map", "Custom Protein Heatmap"]
+    tabs = ["Data Overview", "Volcano Plot", "PCA", "Heat Map", "Custom Protein Heatmap", "Protein Bar Charts"]
     active_tab = st.radio("Select Analysis", tabs, horizontal=True, key="analysis_tabs", index=st.session_state['active_tab'])
     st.session_state['active_tab'] = tabs.index(active_tab)
 
@@ -674,7 +674,7 @@ if uploaded_files:
 
                                         # Plot points
                                         scatter = ax.scatter(
-                                            volcano_data['log2FoldChange'],
+                                            volcano_data['log2FoldChange'], 
                                             volcano_data['-log10(p-value)'],
                                             c=marker_colors,
                                             s=80,
@@ -1688,31 +1688,203 @@ if uploaded_files:
                                         mime="image/svg+xml"
                                     )
                                 with col3:
-                                    # Prepare CSV with additional information
-                                    csv_data = pd.concat([
-                                        heatmap_data,
-                                        group_means,
-                                        matches['Gene Name'] if 'Gene Name' in matches.columns else pd.Series(index=matches.index)
-                                    ], axis=1)
-                                    st.download_button(
-                                        label="Download Data (CSV)",
-                                        data=csv_data.to_csv(),
-                                        file_name="custom_heatmap_data.csv",
-                                        mime="text/csv"
-                                    )
-                            else:
-                                st.warning("No data available for selected groups")
+                                    pass
+
+    elif active_tab == "Protein Bar Charts":
+        st.header("Protein Bar Charts")
+
+        # Dataset selection
+        dataset_name = st.selectbox(
+            "Select a dataset",
+            options=list(datasets.keys()),
+            key="bar_chart_dataset"
+        )
+
+        if dataset_name and dataset_name in datasets:
+            data = datasets[dataset_name]['normalized']
+
+            if dataset_name in st.session_state['dataset_structures']:
+                structure = st.session_state['dataset_structures'][dataset_name]
+
+                # Get replicate groups
+                replicate_groups = list(structure["replicates"].keys())
+
+                # Group renaming functionality
+                st.subheader("Replicate Group Names")
+                group_names = {}
+                cols = st.columns(3)  # Create 3 columns for compact display
+                for i, group in enumerate(replicate_groups):
+                    col_idx = i % 3
+                    with cols[col_idx]:
+                        group_names[group] = st.text_input(
+                            f"Name for {group}",
+                            value=group,
+                            key=f"bar_group_name_{group}"
+                        )
+
+                # Allow selection of replicate groups
+                selected_groups = st.multiselect(
+                    "Select replicate groups for bar charts",
+                    options=replicate_groups,
+                    default=replicate_groups[:2] if len(replicate_groups) >= 2 else replicate_groups
+                )
+
+                if selected_groups:
+                    # Statistical analysis options
+                    st.subheader("Statistical Analysis Options")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        error_bar_type = st.selectbox(
+                            "Error bar type",
+                            options=["Standard Deviation", "Standard Error of Mean"],
+                            key="error_bar_type"
+                        )
+                    
+                    with col2:
+                        if len(selected_groups) >= 3:
+                            stat_test = st.selectbox(
+                                "Statistical test",
+                                options=["T-test vs Control", "ANOVA"],
+                                key="stat_test"
+                            )
+                        else:
+                            stat_test = "T-test vs Control"
+
+                    if stat_test == "T-test vs Control":
+                        control_group = st.selectbox(
+                            "Select control group",
+                            options=selected_groups,
+                            key="control_group"
+                        )
+
+                    # Get protein list from user
+                    protein_input = st.text_area(
+                        "Enter protein names (one per line)",
+                        help="Enter gene names or protein IDs, one per line. These will be used to find matching proteins in the dataset."
+                    )
+
+                    if protein_input:
+                        # Process protein list
+                        protein_list = [p.strip() for p in protein_input.split('\n') if p.strip()]
+
+                        # Find matching proteins in the dataset
+                        if 'Gene Name' in data.columns:
+                            matches = data[data['Gene Name'].str.contains('|'.join(protein_list), case=False, na=False)]
+                        else:
+                            matches = data[data.index.str.contains('|'.join(protein_list), case=False, na=False)]
+
+                        if not matches.empty:
+                            st.write(f"Found {len(matches)} matching proteins")
+
+                            # Create bar plots for each protein
+                            for idx, protein in matches.iterrows():
+                                protein_name = protein['Gene Name'] if 'Gene Name' in matches.columns else idx
+                                
+                                # Prepare data for plotting
+                                plot_data = []
+                                errors = []
+                                
+                                for group in selected_groups:
+                                    group_cols = [col for col in structure["replicates"][group] 
+                                                if col.endswith("PG.Quantity")]
+                                    group_values = protein[group_cols].dropna()
+                                    
+                                    if len(group_values) >= 2:
+                                        mean_value = group_values.mean()
+                                        if error_bar_type == "Standard Deviation":
+                                            error = group_values.std()
+                                        else:  # Standard Error of Mean
+                                            error = group_values.std() / np.sqrt(len(group_values))
+                                        
+                                        plot_data.append(mean_value)
+                                        errors.append(error)
+                                    else:
+                                        plot_data.append(0)
+                                        errors.append(0)
+
+                                # Create bar plot
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                bars = ax.bar(range(len(selected_groups)), plot_data)
+                                
+                                # Add error bars
+                                ax.errorbar(range(len(selected_groups)), plot_data, yerr=errors, 
+                                          fmt='none', color='black', capsize=5)
+
+                                # Calculate and add statistical significance
+                                if stat_test == "T-test vs Control" and len(selected_groups) >= 2:
+                                    control_idx = selected_groups.index(control_group)
+                                    control_cols = [col for col in structure["replicates"][control_group] 
+                                                  if col.endswith("PG.Quantity")]
+                                    control_values = protein[control_cols].dropna()
+
+                                    for i, group in enumerate(selected_groups):
+                                        if group != control_group:
+                                            group_cols = [col for col in structure["replicates"][group] 
+                                                        if col.endswith("PG.Quantity")]
+                                            group_values = protein[group_cols].dropna()
+                                            
+                                            if len(control_values) >= 2 and len(group_values) >= 2:
+                                                _, p_val = stats.ttest_ind(control_values, group_values)
+                                                if p_val < 0.001:
+                                                    sig_text = '***'
+                                                elif p_val < 0.01:
+                                                    sig_text = '**'
+                                                elif p_val < 0.05:
+                                                    sig_text = '*'
+                                                else:
+                                                    sig_text = 'ns'
+                                                
+                                                # Add significance marker
+                                                max_height = max(plot_data[i], plot_data[control_idx])
+                                                error_height = errors[i] if plot_data[i] >= plot_data[control_idx] else errors[control_idx]
+                                                y_pos = max_height + error_height + (max(plot_data) * 0.05)
+                                                
+                                                ax.text(i, y_pos, sig_text, 
+                                                       ha='center', va='bottom')
+                                                
+                                elif stat_test == "ANOVA" and len(selected_groups) >= 3:
+                                    # Perform one-way ANOVA
+                                    groups_for_anova = []
+                                    for group in selected_groups:
+                                        group_cols = [col for col in structure["replicates"][group] 
+                                                    if col.endswith("PG.Quantity")]
+                                        groups_for_anova.append(protein[group_cols].dropna())
+                                    
+                                    if all(len(g) >= 2 for g in groups_for_anova):
+                                        f_stat, p_val = stats.f_oneway(*groups_for_anova)
+                                        ax.text(0.02, 0.98, f'ANOVA p-value: {p_val:.3f}',
+                                               transform=ax.transAxes, ha='left', va='top')
+
+                                # Customize plot
+                                ax.set_xticks(range(len(selected_groups)))
+                                ax.set_xticklabels([group_names[g] for g in selected_groups], rotation=45, ha='right')
+                                ax.set_ylabel('Normalized Intensity')
+                                ax.set_title(f'{protein_name}')
+
+                                # Show plot
+                                st.pyplot(fig)
+                                plt.close()
+
+                                # Add download button for the plot
+                                buf = io.BytesIO()
+                                fig.savefig(buf, format='svg', bbox_inches='tight')
+                                buf.seek(0)
+                                st.download_button(
+                                    label=f"Download {protein_name} plot (SVG)",
+                                    data=buf,
+                                    file_name=f"{protein_name}_bar_chart.svg",
+                                    mime="image/svg+xml"
+                                )
                         else:
                             st.warning("No matching proteins found in the dataset")
-                else:
-                    st.warning("Please select at least one replicate group")
             else:
                 st.error("Dataset structure information not found")
         else:
             if dataset_name:
                 st.error("Selected dataset not found")
             else:
-                st.info("Please select a dataset to create a custom protein heatmap")
+                st.info("Please select a dataset to create bar charts")
 
     else:
         st.info("Please upload one or more datasets to begin analysis")
