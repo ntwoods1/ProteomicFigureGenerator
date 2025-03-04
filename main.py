@@ -1858,7 +1858,9 @@ if uploaded_files:
                                 if show_replicates:
                                     for i, replicates in enumerate(replicate_data):
                                         if len(replicates) > 0:
-                                            ax.scatter([i] * len(replicates), replicates, 
+                                            # Add random jitter to x positions
+                                            x_jitter = np.random.uniform(-0.2, 0.2, size=len(replicates))
+                                            ax.scatter([i + j for j in x_jitter], replicates,
                                                      color='black', alpha=0.5, zorder=3)
 
                                 # Calculate and add statistical significance
@@ -1876,7 +1878,6 @@ if uploaded_files:
                                             
                                             if len(control_values) >= 2 and len(group_values) >= 2:
                                                 t_stat, p_val = stats.ttest_ind(control_values, group_values)
-                                                # Add to statistics table
                                                 # Calculate fold change for statistics
                                                 fold_change = float(group_values.mean() / control_values.mean())
                                                 if use_log2:
@@ -1892,23 +1893,6 @@ if uploaded_files:
                                                     'Fold Change Type': 'log2' if use_log2 else 'regular',
                                                     'Significant': p_val < 0.05
                                                 })
-                                                
-                                                if p_val < 0.001:
-                                                    sig_text = '***'
-                                                elif p_val < 0.01:
-                                                    sig_text = '**'
-                                                elif p_val < 0.05:
-                                                    sig_text = '*'
-                                                else:
-                                                    sig_text = 'ns'
-                                                
-                                                # Add significance marker
-                                                max_height = max(plot_data[i], plot_data[control_idx])
-                                                error_height = errors[i] if plot_data[i] >= plot_data[control_idx] else errors[control_idx]
-                                                y_pos = max_height + error_height + (max(plot_data) * 0.05)
-                                                
-                                                ax.text(i, y_pos, sig_text, 
-                                                       ha='center', va='bottom')
                                                 
                                 elif stat_test == "ANOVA" and len(selected_groups) >= 3:
                                     # Perform one-way ANOVA
@@ -1929,8 +1913,7 @@ if uploaded_files:
                                             'P-value': p_val,
                                             'Significant': p_val < 0.05
                                         })
-                                        ax.text(0.02, 0.98, f'ANOVA p-value: {p_val:.3f}',
-                                               transform=ax.transAxes, ha='left', va='top')
+                                        # ANOVA p-value text annotation removed but value stored in stats
 
                                 # Customize plot
                                 ax.set_xticks(range(len(selected_groups)))
