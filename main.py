@@ -1732,7 +1732,7 @@ if uploaded_files:
                 if selected_groups:
                     # Statistical analysis options
                     st.subheader("Statistical Analysis Options")
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
                         error_bar_type = st.selectbox(
@@ -1750,6 +1750,12 @@ if uploaded_files:
                             )
                         else:
                             stat_test = "T-test vs Control"
+
+                    with col3:
+                        show_replicates = st.toggle("Show individual replicates", value=False)
+
+                    with col4:
+                        show_fold_change = st.toggle("Show fold change vs control", value=False)
 
                     if stat_test == "T-test vs Control":
                         control_group = st.selectbox(
@@ -1777,6 +1783,9 @@ if uploaded_files:
                         if not matches.empty:
                             st.write(f"Found {len(matches)} matching proteins")
 
+                            # Initialize statistics table
+                            stats_data = []
+
                             # Create bar plots for each protein
                             for idx, protein in matches.iterrows():
                                 protein_name = protein['Gene Name'] if 'Gene Name' in matches.columns else idx
@@ -1784,7 +1793,15 @@ if uploaded_files:
                                 # Prepare data for plotting
                                 plot_data = []
                                 errors = []
+                                replicate_data = []
                                 
+                                # Get control values if using fold change
+                                if show_fold_change and stat_test == "T-test vs Control":
+                                    control_cols = [col for col in structure["replicates"][control_group] 
+                                                  if col.endswith("PG.Quantity")]
+                                    control_values = pd.to_numeric(protein[control_cols], errors='coerce').dropna()
+                                    control_mean = float(control_values.mean()) if len(control_values) >= 1 else 1.0
+
                                 for group in selected_groups:
                                     group_cols = [col for col in structure["replicates"][group] 
                                                 if col.endswith("PG.Quantity")]
@@ -1792,17 +1809,32 @@ if uploaded_files:
                                     group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                     
                                     if len(group_values) >= 2:
-                                        mean_value = float(group_values.mean())  # Explicitly convert to float
-                                        if error_bar_type == "Standard Deviation":
-                                            error = float(group_values.std())  # Explicitly convert to float
-                                        else:  # Standard Error of Mean
-                                            error = float(group_values.std() / np.sqrt(len(group_values)))  # Explicitly convert to float
+                                        if show_fold_change and stat_test == "T-test vs Control":
+                                            values = group_values / control_mean
+                                            mean_value = float(values.mean())
+                                            if error_bar_type == "Standard Deviation":
+                                                error = float(values.std())
+                                            else:  # Standard Error of Mean
+                                                error = float(values.std() / np.sqrt(len(values)))
+                                        else:
+                                            mean_value = float(group_values.mean())
+                                            if error_bar_type == "Standard Deviation":
+                                                error = float(group_values.std())
+                                            else:  # Standard Error of Mean
+                                                error = float(group_values.std() / np.sqrt(len(group_values)))
                                         
                                         plot_data.append(mean_value)
                                         errors.append(error)
+                                        if show_replicates:
+                                            if show_fold_change and stat_test == "T-test vs Control":
+                                                replicate_data.append(values)
+                                            else:
+                                                replicate_data.append(group_values)
                                     else:
-                                        plot_data.append(0.0)  # Use explicit float
+                                        plot_data.append(0.0)
                                         errors.append(0.0)
+                                        if show_replicates:
+                                            replicate_data.append([])
 
                                 # Create bar plot
                                 fig, ax = plt.subplots(figsize=(10, 6))
@@ -1812,23 +1844,38 @@ if uploaded_files:
                                 ax.errorbar(range(len(selected_groups)), plot_data, yerr=errors, 
                                           fmt='none', color='black', capsize=5)
 
+                                # Add individual replicate points if enabled
+                                if show_replicates:
+                                    for i, replicates in enumerate(replicate_data):
+                                        if len(replicates) > 0:
+                                            ax.scatter([i] * len(replicates), replicates, 
+                                                     color='black', alpha=0.5, zorder=3)
+
                                 # Calculate and add statistical significance
                                 if stat_test == "T-test vs Control" and len(selected_groups) >= 2:
                                     control_idx = selected_groups.index(control_group)
                                     control_cols = [col for col in structure["replicates"][control_group] 
                                                   if col.endswith("PG.Quantity")]
-                                    # Convert to numeric and handle any non-numeric values
                                     control_values = pd.to_numeric(protein[control_cols], errors='coerce').dropna()
 
                                     for i, group in enumerate(selected_groups):
                                         if group != control_group:
                                             group_cols = [col for col in structure["replicates"][group] 
                                                         if col.endswith("PG.Quantity")]
-                                            # Convert to numeric and handle any non-numeric values
                                             group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                             
                                             if len(control_values) >= 2 and len(group_values) >= 2:
-                                                _, p_val = stats.ttest_ind(control_values, group_values)
+                                                t_stat, p_val = stats.ttest_ind(control_values, group_values)
+                                                # Add to statistics table
+                                                stats_data.append({
+                                                    'Protein': protein_name,
+                                                    'Control': group_names[control_group],
+                                                    'Test Group': group_names[group],
+                                                    'Test Type': 'T-test',
+                                                    'P-value': p_val,
+                                                    'Significant': p_val < 0.05
+                                                })
+                                                
                                                 if p_val < 0.001:
                                                     sig_text = '***'
                                                 elif p_val < 0.01:
@@ -1852,19 +1899,31 @@ if uploaded_files:
                                     for group in selected_groups:
                                         group_cols = [col for col in structure["replicates"][group] 
                                                     if col.endswith("PG.Quantity")]
-                                        # Convert to numeric and handle any non-numeric values
                                         group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                         groups_for_anova.append(group_values)
                                     
                                     if all(len(g) >= 2 for g in groups_for_anova):
                                         f_stat, p_val = stats.f_oneway(*groups_for_anova)
+                                        # Add to statistics table
+                                        stats_data.append({
+                                            'Protein': protein_name,
+                                            'Groups': ', '.join([group_names[g] for g in selected_groups]),
+                                            'Test Type': 'ANOVA',
+                                            'P-value': p_val,
+                                            'Significant': p_val < 0.05
+                                        })
                                         ax.text(0.02, 0.98, f'ANOVA p-value: {p_val:.3f}',
                                                transform=ax.transAxes, ha='left', va='top')
 
                                 # Customize plot
                                 ax.set_xticks(range(len(selected_groups)))
                                 ax.set_xticklabels([group_names[g] for g in selected_groups], rotation=45, ha='right')
-                                ax.set_ylabel('Normalized Intensity')
+                                if show_fold_change and stat_test == "T-test vs Control":
+                                    ax.set_ylabel('Fold Change vs Control')
+                                    # Add horizontal line at y=1
+                                    ax.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+                                else:
+                                    ax.set_ylabel('Normalized Intensity')
                                 ax.set_title(f'{protein_name}')
 
                                 # Show plot
@@ -1880,6 +1939,21 @@ if uploaded_files:
                                     data=buf,
                                     file_name=f"{protein_name}_bar_chart.svg",
                                     mime="image/svg+xml"
+                                )
+
+                            # Create and display statistics table
+                            if stats_data:
+                                st.subheader("Statistical Analysis Results")
+                                stats_df = pd.DataFrame(stats_data)
+                                st.dataframe(stats_df)
+
+                                # Add download button for statistics
+                                csv = stats_df.to_csv(index=False)
+                                st.download_button(
+                                    label="Download Statistics (CSV)",
+                                    data=csv,
+                                    file_name="statistical_analysis.csv",
+                                    mime="text/csv"
                                 )
                         else:
                             st.warning("No matching proteins found in the dataset")
