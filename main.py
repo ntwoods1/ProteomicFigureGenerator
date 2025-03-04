@@ -105,31 +105,8 @@ missing_values_method = st.sidebar.selectbox(
     help="Method to handle missing values in the dataset. Only applies to PG.Quantity columns."
 )
 
-# 4. Normalization Options
-st.sidebar.subheader("4. Normalization")
-normalization_method = st.sidebar.selectbox(
-    "Normalization method",
-    options=["none", "log2", "zscore", "median", "loess"],
-    help="Method to normalize the data. LOESS performs local regression smoothing."
-)
-
-# Centering Options
-if normalization_method != "none":
-    apply_centering = st.sidebar.checkbox(
-        "Apply row centering",
-        value=False,
-        help="Center the data row-wise after normalization"
-    )
-
-    if apply_centering:
-        center_method = st.sidebar.selectbox(
-            "Centering method",
-            options=["zscore", "scale100"],
-            help="Method to center the rows"
-        )
-
-# 5. Data Smoothing Options
-st.sidebar.subheader("5. Data Smoothing")
+# 4. Data Smoothing Options
+st.sidebar.subheader("4. Data Smoothing")
 apply_smoothing = st.sidebar.checkbox(
     "Apply data smoothing",
     value=False,
@@ -191,6 +168,30 @@ if apply_smoothing:
             value=0.3,
             help="Smoothing factor for exponential smoothing"
         )
+
+# 5. Normalization Options
+st.sidebar.subheader("5. Normalization")
+normalization_method = st.sidebar.selectbox(
+    "Normalization method",
+    options=["none", "log2", "zscore", "median"],
+    help="Method to normalize the data"
+)
+
+# Centering Options
+if normalization_method != "none":
+    apply_centering = st.sidebar.checkbox(
+        "Apply row centering",
+        value=False,
+        help="Center the data row-wise after normalization"
+    )
+
+    if apply_centering:
+        center_method = st.sidebar.selectbox(
+            "Centering method",
+            options=["zscore", "scale100"],
+            help="Method to center the rows"
+        )
+
 
 # Function to extract gene names from the Description column
 def extract_gene_name(description):
@@ -413,7 +414,25 @@ if uploaded_files:
             processed_data['missing_handled'] = final_filtered_data.copy()
             progress_bar.progress(85)
 
-            # 5. Apply normalization if selected
+            # 5. Apply smoothing if selected
+            if apply_smoothing:
+                status_container.text("Applying data smoothing...")
+                try:
+                    if smoothing_method == "Moving Average":
+                        final_filtered_data = apply_moving_average(final_filtered_data, window_size)
+                    elif smoothing_method == "Savitzky-Golay":
+                        final_filtered_data = apply_savitzky_golay(final_filtered_data, window_length, polyorder)
+                    elif smoothing_method == "LOESS":
+                        final_filtered_data = apply_loess_smoothing(final_filtered_data, frac, iterations)
+                    else:  # Exponential
+                        final_filtered_data = apply_exponential_smoothing(final_filtered_data, alpha)
+                except Exception as e:
+                    st.error(f"Error during smoothing: {str(e)}")
+
+            processed_data['smoothed'] = final_filtered_data.copy()
+            progress_bar.progress(90)
+                    
+            # 6. Apply normalization if selected
             status_container.text("Applying normalization...")
             if normalization_method != "none":
                 try:
@@ -431,25 +450,6 @@ if uploaded_files:
                 normalized_data = final_filtered_data.copy()
 
             processed_data['normalized'] = normalized_data
-            progress_bar.progress(95)
-
-            # 6. Apply smoothing if selected
-            if apply_smoothing:
-                status_container.text("Applying data smoothing...")
-                try:
-                    if smoothing_method == "Moving Average":
-                        normalized_data = apply_moving_average(normalized_data, window_size)
-                    elif smoothing_method == "Savitzky-Golay":
-                        normalized_data = apply_savitzky_golay(normalized_data, window_length, polyorder)
-                    elif smoothing_method == "LOESS":
-                        normalized_data = apply_loess_smoothing(normalized_data, frac, iterations)
-                    else:  # Exponential
-                        normalized_data = apply_exponential_smoothing(normalized_data, alpha)
-                except Exception as e:
-                    st.error(f"Error during smoothing: {str(e)}")
-                    normalized_data = final_filtered_data.copy()
-
-            processed_data['smoothed'] = normalized_data
             progress_bar.progress(98)
 
             # Update stats with smoothing info if applied
