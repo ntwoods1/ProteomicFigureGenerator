@@ -8,7 +8,12 @@ from scipy.signal import savgol_filter
 
 def apply_moving_average(data, window_size=3):
     """Apply moving average smoothing to protein data."""
-    return pd.DataFrame(data).rolling(window=window_size, center=True).mean()
+    # Ensure data is numeric
+    if isinstance(data, pd.DataFrame):
+        numeric_data = data.apply(pd.to_numeric, errors='coerce')
+    else:
+        numeric_data = pd.to_numeric(data, errors='coerce')
+    return pd.DataFrame(numeric_data).rolling(window=window_size, center=True).mean()
 
 def apply_savitzky_golay(data, window_length=5, polyorder=2):
     """
@@ -16,14 +21,17 @@ def apply_savitzky_golay(data, window_length=5, polyorder=2):
     window_length must be odd and greater than polyorder.
     """
     if isinstance(data, pd.DataFrame):
-        smoothed_data = data.copy()
+        smoothed_data = pd.DataFrame(index=data.index, columns=data.columns)
         for col in data.columns:
-            # Handle NaN values by interpolating
-            valid_data = data[col].interpolate().fillna(method='bfill').fillna(method='ffill')
-            smoothed_data[col] = savgol_filter(valid_data, window_length, polyorder)
+            # Convert to numeric and handle NaN values
+            series = pd.to_numeric(data[col], errors='coerce')
+            valid_data = series.interpolate().fillna(method='bfill').fillna(method='ffill')
+            smoothed_data[col] = savgol_filter(valid_data.values, window_length, polyorder)
         return smoothed_data
     else:
-        return savgol_filter(data, window_length, polyorder)
+        series = pd.to_numeric(data, errors='coerce')
+        valid_data = series.interpolate().fillna(method='bfill').fillna(method='ffill')
+        return savgol_filter(valid_data.values, window_length, polyorder)
 
 def apply_loess_smoothing(data, frac=0.2, it=3):
     """
@@ -32,22 +40,29 @@ def apply_loess_smoothing(data, frac=0.2, it=3):
     it: number of iterations for robust fitting
     """
     if isinstance(data, pd.DataFrame):
-        smoothed_data = data.copy()
+        smoothed_data = pd.DataFrame(index=data.index, columns=data.columns)
         for col in data.columns:
-            y = data[col].values
+            # Convert to numeric and handle NaN values
+            series = pd.to_numeric(data[col], errors='coerce')
+            y = series.values
             x = np.arange(len(y))
-            # Handle NaN values
             mask = ~np.isnan(y)
             if sum(mask) > 2:  # Need at least 3 points for LOESS
                 smoothed = lowess(y[mask], x[mask], frac=frac, it=it, return_sorted=False)
-                smoothed_data.loc[mask, col] = smoothed
+                smoothed_series = pd.Series(index=series.index, dtype=float)
+                smoothed_series.loc[mask] = smoothed
+                smoothed_data[col] = smoothed_series
+            else:
+                smoothed_data[col] = series
         return smoothed_data
     else:
-        x = np.arange(len(data))
-        mask = ~np.isnan(data)
+        series = pd.to_numeric(data, errors='coerce')
+        y = series.values
+        x = np.arange(len(y))
+        mask = ~np.isnan(y)
         if sum(mask) > 2:
-            return lowess(data[mask], x[mask], frac=frac, it=it, return_sorted=False)
-        return data
+            return lowess(y[mask], x[mask], frac=frac, it=it, return_sorted=False)
+        return series
 
 def apply_exponential_smoothing(data, alpha=0.3):
     """
@@ -55,9 +70,11 @@ def apply_exponential_smoothing(data, alpha=0.3):
     alpha: float between 0 and 1, smoothing factor
     """
     if isinstance(data, pd.DataFrame):
-        return data.ewm(alpha=alpha).mean()
+        numeric_data = data.apply(pd.to_numeric, errors='coerce')
+        return numeric_data.ewm(alpha=alpha).mean()
     else:
-        return pd.Series(data).ewm(alpha=alpha).mean()
+        numeric_data = pd.to_numeric(data, errors='coerce')
+        return pd.Series(numeric_data).ewm(alpha=alpha).mean()
 
 def analyze_dataset_structure(df):
     """
