@@ -135,6 +135,72 @@ def extract_gene_name(description):
             return None
     return None
 
+def calculate_significance_matrix(data, groups, structure, alpha=0.05):
+    """Calculate statistical significance between groups for each protein."""
+    from scipy import stats
+    import numpy as np
+    
+    # Get all pairs of groups
+    group_pairs = [(g1, g2) for i, g1 in enumerate(groups) for g2 in groups[i+1:]]
+    
+    # Initialize results dictionary
+    significance = {}
+    
+    # For each protein
+    for protein in data.index:
+        significance[protein] = {}
+        
+        # For each pair of groups
+        for g1, g2 in group_pairs:
+            # Get quantity columns for each group
+            g1_cols = [col for col in structure["replicates"][g1] if col.endswith("PG.Quantity")]
+            g2_cols = [col for col in structure["replicates"][g2] if col.endswith("PG.Quantity")]
+            
+            # Get values for each group
+            g1_values = data.loc[protein, g1_cols].dropna()
+            g2_values = data.loc[protein, g2_cols].dropna()
+            
+            # Perform t-test if we have enough values
+            if len(g1_values) >= 2 and len(g2_values) >= 2:
+                _, p_val = stats.ttest_ind(g1_values, g2_values)
+                significance[protein][(g1, g2)] = p_val < alpha
+            else:
+                significance[protein][(g1, g2)] = False
+                
+    return significance
+
+def add_significance_markers(g, significance_data, ax, groups, group_means=None):
+    """Add significance markers to the heatmap."""
+    import numpy as np
+    
+    # If using group means, we'll mark directly on the heatmap
+    if group_means is not None:
+        for protein_idx, protein in enumerate(significance_data.keys()):
+            for (g1, g2), is_significant in significance_data[protein].items():
+                if is_significant:
+                    g1_idx = groups.index(g1)
+                    g2_idx = groups.index(g2)
+                    # Add asterisk between significant pairs
+                    ax.text(g1_idx, protein_idx, '*', 
+                           ha='center', va='center',
+                           color='black', fontweight='bold')
+                    ax.text(g2_idx, protein_idx, '*',
+                           ha='center', va='center',
+                           color='black', fontweight='bold')
+    else:
+        # For detailed heatmap, add markers to the group labels
+        for protein_idx, protein in enumerate(significance_data.keys()):
+            significant_groups = set()
+            for (g1, g2), is_significant in significance_data[protein].items():
+                if is_significant:
+                    significant_groups.add(g1)
+                    significant_groups.add(g2)
+            
+            if significant_groups:
+                # Add marker to the protein label
+                current_label = ax.get_yticklabels()[protein_idx].get_text()
+                ax.get_yticklabels()[protein_idx].set_text(f"{current_label} *")
+
 # Function to create cache key
 def get_cache_key(file_name, processing_params):
     param_str = "_".join([
@@ -1267,6 +1333,19 @@ if uploaded_files:
                         with col2:
                             cluster_cols = st.toggle("Cluster samples", value=True)
 
+                        # Add significance testing toggle
+                        col3, col4 = st.columns(2)
+                        with col3:
+                            show_significance = st.toggle("Show statistical significance", value=True)
+                        with col4:
+                            significance_alpha = st.slider("Significance level (α)", 0.01, 0.10, 0.05, 0.01)
+
+                        # Calculate significance if enabled
+                        if show_significance:
+                            significance_results = calculate_significance_matrix(
+                                plot_data, selected_groups, structure, alpha=significance_alpha
+                            )
+
                         with heatmap_tab1:
                             g1 = sns.clustermap(
                                 plot_data,
@@ -1294,6 +1373,11 @@ if uploaded_files:
 
                             # Rotate x-axis labels
                             plt.setp(g1.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                            # Add significance markers if enabled
+                            if show_significance:
+                                add_significance_markers(g1, significance_results, g1.ax_heatmap, 
+                                                      selected_groups)
 
                             # Show plot in Streamlit
                             st.pyplot(g1.figure)
@@ -1326,6 +1410,11 @@ if uploaded_files:
 
                             # Rotate x-axis labels
                             plt.setp(g2.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                            # Add significance markers if enabled
+                            if show_significance:
+                                add_significance_markers(g2, significance_results, g2.ax_heatmap, 
+                                                      selected_groups, group_means=True)
 
                             # Show plot in Streamlit
                             st.pyplot(g2.figure)
@@ -1485,6 +1574,19 @@ if uploaded_files:
                                 with col2:
                                     cluster_cols = st.toggle("Cluster samples", value=True)
 
+                                # Add significance testing toggle
+                                col3, col4 = st.columns(2)
+                                with col3:
+                                    show_significance = st.toggle("Show statistical significance", value=True)
+                                with col4:
+                                    significance_alpha = st.slider("Significance level (α)", 0.01, 0.10, 0.05, 0.01)
+
+                                # Calculate significance if enabled
+                                if show_significance:
+                                    significance_results = calculate_significance_matrix(
+                                        heatmap_data, selected_groups, structure, alpha=significance_alpha
+                                    )
+
                                 with heatmap_tab1:
                                     g1 = sns.clustermap(
                                         heatmap_data,
@@ -1512,6 +1614,11 @@ if uploaded_files:
 
                                     # Rotate x-axis labels
                                     plt.setp(g1.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                                    # Add significance markers if enabled
+                                    if show_significance:
+                                        add_significance_markers(g1, significance_results, g1.ax_heatmap, 
+                                                             selected_groups)
 
                                     # Show plot in Streamlit
                                     st.pyplot(g1.figure)
@@ -1544,6 +1651,11 @@ if uploaded_files:
 
                                     # Rotate x-axis labels
                                     plt.setp(g2.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+
+                                    # Add significance markers if enabled
+                                    if show_significance:
+                                        add_significance_markers(g2, significance_results, g2.ax_heatmap, 
+                                                             selected_groups, group_means=True)
 
                                     # Show plot in Streamlit
                                     st.pyplot(g2.figure)
