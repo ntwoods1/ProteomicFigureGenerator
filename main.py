@@ -1756,6 +1756,8 @@ if uploaded_files:
 
                     with col4:
                         show_fold_change = st.toggle("Show fold change vs control", value=False)
+                        if show_fold_change:
+                            use_log2 = st.toggle("Use log2 fold change", value=False)
 
                     if stat_test == "T-test vs Control":
                         control_group = st.selectbox(
@@ -1811,6 +1813,8 @@ if uploaded_files:
                                     if len(group_values) >= 2:
                                         if show_fold_change and stat_test == "T-test vs Control":
                                             values = group_values / control_mean
+                                            if use_log2:
+                                                values = np.log2(values)
                                             mean_value = float(values.mean())
                                             if error_bar_type == "Standard Deviation":
                                                 error = float(values.std())
@@ -1827,7 +1831,10 @@ if uploaded_files:
                                         errors.append(error)
                                         if show_replicates:
                                             if show_fold_change and stat_test == "T-test vs Control":
-                                                replicate_data.append(values)
+                                                replicate_values = group_values / control_mean
+                                                if use_log2:
+                                                    replicate_values = np.log2(replicate_values)
+                                                replicate_data.append(replicate_values)
                                             else:
                                                 replicate_data.append(group_values)
                                     else:
@@ -1867,12 +1874,19 @@ if uploaded_files:
                                             if len(control_values) >= 2 and len(group_values) >= 2:
                                                 t_stat, p_val = stats.ttest_ind(control_values, group_values)
                                                 # Add to statistics table
+                                                # Calculate fold change for statistics
+                                                fold_change = float(group_values.mean() / control_values.mean())
+                                                if use_log2:
+                                                    fold_change = np.log2(fold_change)
+
                                                 stats_data.append({
                                                     'Protein': protein_name,
                                                     'Control': group_names[control_group],
                                                     'Test Group': group_names[group],
                                                     'Test Type': 'T-test',
                                                     'P-value': p_val,
+                                                    'Fold Change': fold_change,
+                                                    'Fold Change Type': 'log2' if use_log2 else 'regular',
                                                     'Significant': p_val < 0.05
                                                 })
                                                 
@@ -1919,9 +1933,9 @@ if uploaded_files:
                                 ax.set_xticks(range(len(selected_groups)))
                                 ax.set_xticklabels([group_names[g] for g in selected_groups], rotation=45, ha='right')
                                 if show_fold_change and stat_test == "T-test vs Control":
-                                    ax.set_ylabel('Fold Change vs Control')
-                                    # Add horizontal line at y=1
-                                    ax.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+                                    ax.set_ylabel('log2 Fold Change vs Control' if use_log2 else 'Fold Change vs Control')
+                                    # Add horizontal line at y=0 for log2 or y=1 for regular fold change
+                                    ax.axhline(y=0 if use_log2 else 1, color='gray', linestyle='--', alpha=0.5)
                                 else:
                                     ax.set_ylabel('Normalized Intensity')
                                 ax.set_title(f'{protein_name}')
