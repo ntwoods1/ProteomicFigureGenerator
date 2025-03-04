@@ -16,7 +16,11 @@ from utils.data_processing import (
     calculate_cv_table, 
     handle_missing_values,
     normalize_data,
-    filter_by_peptide_count  
+    filter_by_peptide_count,
+    apply_moving_average,
+    apply_savitzky_golay,
+    apply_loess_smoothing,
+    apply_exponential_smoothing
 )
 from itertools import combinations
 
@@ -122,6 +126,70 @@ if normalization_method != "none":
             "Centering method",
             options=["zscore", "scale100"],
             help="Method to center the rows"
+        )
+
+# 5. Data Smoothing Options
+st.sidebar.subheader("5. Data Smoothing")
+apply_smoothing = st.sidebar.checkbox(
+    "Apply data smoothing",
+    value=False,
+    help="Apply smoothing techniques to reduce noise in the data"
+)
+
+if apply_smoothing:
+    smoothing_method = st.sidebar.selectbox(
+        "Smoothing method",
+        options=["Moving Average", "Savitzky-Golay", "LOESS", "Exponential"],
+        help="Select the smoothing method to apply"
+    )
+
+    if smoothing_method == "Moving Average":
+        window_size = st.sidebar.slider(
+            "Window size",
+            min_value=3,
+            max_value=11,
+            value=3,
+            step=2,
+            help="Number of points to use for moving average (must be odd)"
+        )
+    elif smoothing_method == "Savitzky-Golay":
+        window_length = st.sidebar.slider(
+            "Window length",
+            min_value=5,
+            max_value=11,
+            value=5,
+            step=2,
+            help="Length of the filter window (must be odd)"
+        )
+        polyorder = st.sidebar.slider(
+            "Polynomial order",
+            min_value=2,
+            max_value=4,
+            value=2,
+            help="Order of the polynomial used to fit the samples"
+        )
+    elif smoothing_method == "LOESS":
+        frac = st.sidebar.slider(
+            "Fraction of points",
+            min_value=0.1,
+            max_value=0.5,
+            value=0.2,
+            help="Fraction of points to use for local regression"
+        )
+        iterations = st.sidebar.slider(
+            "Number of iterations",
+            min_value=1,
+            max_value=5,
+            value=3,
+            help="Number of iterations for robust fitting"
+        )
+    else:  # Exponential
+        alpha = st.sidebar.slider(
+            "Smoothing factor (α)",
+            min_value=0.1,
+            max_value=0.9,
+            value=0.3,
+            help="Smoothing factor for exponential smoothing"
         )
 
 # Function to extract gene names from the Description column
@@ -365,6 +433,39 @@ if uploaded_files:
             processed_data['normalized'] = normalized_data
             progress_bar.progress(95)
 
+            # 6. Apply smoothing if selected
+            if apply_smoothing:
+                status_container.text("Applying data smoothing...")
+                try:
+                    if smoothing_method == "Moving Average":
+                        normalized_data = apply_moving_average(normalized_data, window_size)
+                    elif smoothing_method == "Savitzky-Golay":
+                        normalized_data = apply_savitzky_golay(normalized_data, window_length, polyorder)
+                    elif smoothing_method == "LOESS":
+                        normalized_data = apply_loess_smoothing(normalized_data, frac, iterations)
+                    else:  # Exponential
+                        normalized_data = apply_exponential_smoothing(normalized_data, alpha)
+                except Exception as e:
+                    st.error(f"Error during smoothing: {str(e)}")
+                    normalized_data = final_filtered_data.copy()
+
+            processed_data['smoothed'] = normalized_data
+            progress_bar.progress(98)
+
+            # Update stats with smoothing info if applied
+            if apply_smoothing:
+                processed_data['stats']['smoothing'] = {
+                    'method': smoothing_method,
+                    'parameters': {
+                        'window_size': window_size if smoothing_method == "Moving Average" else None,
+                        'window_length': window_length if smoothing_method == "Savitzky-Golay" else None,
+                        'polyorder': polyorder if smoothing_method == "Savitzky-Golay" else None,
+                        'frac': frac if smoothing_method == "LOESS" else None,
+                        'iterations': iterations if smoothing_method == "LOESS" else None,
+                        'alpha': alpha if smoothing_method == "Exponential" else None
+                    }
+                }
+
             # Store the processed data with updated stats
             processed_data['stats'] = {
                 'original_count': len(data),
@@ -505,6 +606,45 @@ if uploaded_files:
 
             st.subheader("Basic Statistics")
             st.write(final_data.describe())
+
+            if 'smoothing' in processed_data['stats']:
+                st.subheader("Data Smoothing Analysis")
+                smoothing_info = processed_data['stats']['smoothing']
+                st.write(f"**Applied Smoothing Method:** {smoothing_info['method']}")
+                
+                # Display parameters used
+                st.write("**Smoothing Parameters:**")
+                params = smoothing_info['parameters']
+                for param, value in params.items():
+                    if value is not None:
+                        st.write(f"- {param}: {value}")
+
+                # Show example of smoothing effect
+                st.write("**Example of Smoothing Effect**")
+                # Select a random protein with sufficient variation
+                example_protein = final_data.sample(n=1).index[0]
+                
+                # Create comparison plot
+                fig, ax = plt.subplots(figsize=(10, 5))
+                
+                # Plot original and smoothed data
+                quantity_cols = [col for col in final_data.columns if col.endswith("PG.Quantity")]
+                original_values = final_data.loc[example_protein, quantity_cols]
+                smoothed_values = normalized_data.loc[example_protein, quantity_cols]
+                
+                x = range(len(quantity_cols))
+                ax.plot(x, original_values, 'o-', label='Original', alpha=0.5)
+                ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2)
+                
+                ax.set_xticks(x)
+                ax.set_xticklabels(quantity_cols, rotation=45, ha='right')
+                ax.set_ylabel('Intensity')
+                ax.set_title(f'Smoothing Effect Example\nProtein: {example_protein}')
+                ax.legend()
+                
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
 
     elif active_tab == "Volcano Plot":
         st.header("Volcano Plot")

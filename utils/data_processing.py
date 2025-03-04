@@ -4,6 +4,60 @@ from scipy import stats
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer, KNNImputer
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from scipy.signal import savgol_filter
+
+def apply_moving_average(data, window_size=3):
+    """Apply moving average smoothing to protein data."""
+    return pd.DataFrame(data).rolling(window=window_size, center=True).mean()
+
+def apply_savitzky_golay(data, window_length=5, polyorder=2):
+    """
+    Apply Savitzky-Golay filter to protein data.
+    window_length must be odd and greater than polyorder.
+    """
+    if isinstance(data, pd.DataFrame):
+        smoothed_data = data.copy()
+        for col in data.columns:
+            # Handle NaN values by interpolating
+            valid_data = data[col].interpolate().fillna(method='bfill').fillna(method='ffill')
+            smoothed_data[col] = savgol_filter(valid_data, window_length, polyorder)
+        return smoothed_data
+    else:
+        return savgol_filter(data, window_length, polyorder)
+
+def apply_loess_smoothing(data, frac=0.2, it=3):
+    """
+    Enhanced LOESS smoothing for protein data.
+    frac: float, between 0 and 1, size of neighborhood for smoothing
+    it: number of iterations for robust fitting
+    """
+    if isinstance(data, pd.DataFrame):
+        smoothed_data = data.copy()
+        for col in data.columns:
+            y = data[col].values
+            x = np.arange(len(y))
+            # Handle NaN values
+            mask = ~np.isnan(y)
+            if sum(mask) > 2:  # Need at least 3 points for LOESS
+                smoothed = lowess(y[mask], x[mask], frac=frac, it=it, return_sorted=False)
+                smoothed_data.loc[mask, col] = smoothed
+        return smoothed_data
+    else:
+        x = np.arange(len(data))
+        mask = ~np.isnan(data)
+        if sum(mask) > 2:
+            return lowess(data[mask], x[mask], frac=frac, it=it, return_sorted=False)
+        return data
+
+def apply_exponential_smoothing(data, alpha=0.3):
+    """
+    Apply exponential smoothing to protein data.
+    alpha: float between 0 and 1, smoothing factor
+    """
+    if isinstance(data, pd.DataFrame):
+        return data.ewm(alpha=alpha).mean()
+    else:
+        return pd.Series(data).ewm(alpha=alpha).mean()
 
 def analyze_dataset_structure(df):
     """
