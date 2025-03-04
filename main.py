@@ -443,7 +443,7 @@ if uploaded_files:
     elif active_tab == "Volcano Plot":
         st.header("Volcano Plot")
 
-        # Dataset selection with default empty option
+        # Dataset selection with default empty option 
         dataset_options = [""] + list(datasets.keys())
         dataset_name = st.selectbox(
             "Select a dataset for Volcano Plot",
@@ -457,15 +457,7 @@ if uploaded_files:
             # Get structure from session state
             if dataset_name in st.session_state['dataset_structures']:
                 structure = st.session_state['dataset_structures'][dataset_name]
-            else:
-                try:
-                    structure = analyze_dataset_structure(selected_data)
-                    st.session_state['dataset_structures'][dataset_name] = structure
-                except Exception as e:
-                    st.error(f"Error analyzing dataset structure: {str(e)}")
-                    structure = None
 
-            if structure:
                 # Get unique groups from replicate structure
                 all_groups = list(structure["replicates"].keys())
 
