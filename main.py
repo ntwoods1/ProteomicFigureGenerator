@@ -1788,20 +1788,21 @@ if uploaded_files:
                                 for group in selected_groups:
                                     group_cols = [col for col in structure["replicates"][group] 
                                                 if col.endswith("PG.Quantity")]
-                                    group_values = protein[group_cols].dropna()
+                                    # Convert to numeric and handle any non-numeric values
+                                    group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                     
                                     if len(group_values) >= 2:
-                                        mean_value = group_values.mean()
+                                        mean_value = float(group_values.mean())  # Explicitly convert to float
                                         if error_bar_type == "Standard Deviation":
-                                            error = group_values.std()
+                                            error = float(group_values.std())  # Explicitly convert to float
                                         else:  # Standard Error of Mean
-                                            error = group_values.std() / np.sqrt(len(group_values))
+                                            error = float(group_values.std() / np.sqrt(len(group_values)))  # Explicitly convert to float
                                         
                                         plot_data.append(mean_value)
                                         errors.append(error)
                                     else:
-                                        plot_data.append(0)
-                                        errors.append(0)
+                                        plot_data.append(0.0)  # Use explicit float
+                                        errors.append(0.0)
 
                                 # Create bar plot
                                 fig, ax = plt.subplots(figsize=(10, 6))
@@ -1816,13 +1817,15 @@ if uploaded_files:
                                     control_idx = selected_groups.index(control_group)
                                     control_cols = [col for col in structure["replicates"][control_group] 
                                                   if col.endswith("PG.Quantity")]
-                                    control_values = protein[control_cols].dropna()
+                                    # Convert to numeric and handle any non-numeric values
+                                    control_values = pd.to_numeric(protein[control_cols], errors='coerce').dropna()
 
                                     for i, group in enumerate(selected_groups):
                                         if group != control_group:
                                             group_cols = [col for col in structure["replicates"][group] 
                                                         if col.endswith("PG.Quantity")]
-                                            group_values = protein[group_cols].dropna()
+                                            # Convert to numeric and handle any non-numeric values
+                                            group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                             
                                             if len(control_values) >= 2 and len(group_values) >= 2:
                                                 _, p_val = stats.ttest_ind(control_values, group_values)
@@ -1849,7 +1852,9 @@ if uploaded_files:
                                     for group in selected_groups:
                                         group_cols = [col for col in structure["replicates"][group] 
                                                     if col.endswith("PG.Quantity")]
-                                        groups_for_anova.append(protein[group_cols].dropna())
+                                        # Convert to numeric and handle any non-numeric values
+                                        group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
+                                        groups_for_anova.append(group_values)
                                     
                                     if all(len(g) >= 2 for g in groups_for_anova):
                                         f_stat, p_val = stats.f_oneway(*groups_for_anova)
