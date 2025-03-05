@@ -210,33 +210,48 @@ def extract_gene_name(description):
 
 def process_data(data, smoothing_method=None, smoothing_params=None):
     """Process data with smoothing if specified"""
-    if smoothing_method and smoothing_params:
+    try:
         # Get only PG.Quantity columns for smoothing
         quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+        if not quantity_cols:
+            st.error("No PG.Quantity columns found for smoothing")
+            return data, None, None
+            
         data_to_smooth = data[quantity_cols].copy()
-        
-        # Apply smoothing based on method
-        if smoothing_method == "Moving Average":
-            smoothed_data = apply_moving_average(data_to_smooth, smoothing_params['window_size'])
-        elif smoothing_method == "Savitzky-Golay":
-            smoothed_data = apply_savitzky_golay(
-                data_to_smooth, 
-                smoothing_params['window_length'],
-                smoothing_params['polyorder']
-            )
-        elif smoothing_method == "LOESS":
-            smoothed_data = apply_loess_smoothing(
-                data_to_smooth,
-                smoothing_params['frac'],
-                smoothing_params['iterations']
-            )
-        else:  # Exponential
-            smoothed_data = apply_exponential_smoothing(data_to_smooth, smoothing_params['alpha'])
-        
-        # Update quantity columns with smoothed data
         result = data.copy()
-        result[quantity_cols] = smoothed_data
-        return result, data_to_smooth, smoothed_data
+        
+        if smoothing_method and smoothing_params:
+            try:
+                # Apply smoothing based on method
+                if smoothing_method == "Moving Average":
+                    smoothed_data = apply_moving_average(data_to_smooth, smoothing_params['window_size'])
+                elif smoothing_method == "Savitzky-Golay":
+                    smoothed_data = apply_savitzky_golay(
+                        data_to_smooth, 
+                        smoothing_params['window_length'],
+                        smoothing_params['polyorder']
+                    )
+                elif smoothing_method == "LOESS":
+                    smoothed_data = apply_loess_smoothing(
+                        data_to_smooth,
+                        smoothing_params['frac'],
+                        smoothing_params['iterations']
+                    )
+                else:  # Exponential
+                    smoothed_data = apply_exponential_smoothing(data_to_smooth, smoothing_params['alpha'])
+                
+                # Update quantity columns with smoothed data
+                result[quantity_cols] = smoothed_data
+                
+                # Return original data_to_smooth for comparison
+                return result, data_to_smooth, smoothed_data
+            except Exception as e:
+                st.error(f"Error during smoothing: {str(e)}")
+                return data, None, None
+    except Exception as e:
+        st.error(f"Error processing data: {str(e)}")
+        return data, None, None
+        
     return data, None, None
 
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
@@ -452,41 +467,43 @@ if uploaded_files:
             # 5. Apply smoothing if selected (before normalization)
             if apply_smoothing:
                 status_container.text("Applying data smoothing...")
-                try:
-                    smoothing_params = {
-                        'window_size': window_size if smoothing_method == "Moving Average" else None,
-                        'window_length': window_length if smoothing_method == "Savitzky-Golay" else None,
-                        'polyorder': polyorder if smoothing_method == "Savitzky-Golay" else None,
-                        'frac': frac if smoothing_method == "LOESS" else None,
-                        'iterations': iterations if smoothing_method == "LOESS" else None,
-                        'alpha': alpha if smoothing_method == "Exponential" else None
+                smoothing_params = {
+                    'window_size': window_size if smoothing_method == "Moving Average" else None,
+                    'window_length': window_length if smoothing_method == "Savitzky-Golay" else None,
+                    'polyorder': polyorder if smoothing_method == "Savitzky-Golay" else None,
+                    'frac': frac if smoothing_method == "LOESS" else None,
+                    'iterations': iterations if smoothing_method == "LOESS" else None,
+                    'alpha': alpha if smoothing_method == "Exponential" else None
+                }
+                
+                smoothed_result, original_quantities, smoothed_quantities = process_data(
+                    final_filtered_data,
+                    smoothing_method,
+                    smoothing_params
+                )
+                
+                if smoothed_quantities is not None:
+                    final_filtered_data = smoothed_result
+                    processed_data['original_quantities'] = original_quantities
+                    processed_data['smoothed_quantities'] = smoothed_quantities
+                    
+                    # Add smoothing info to stats
+                    processed_data['stats']['smoothing'] = {
+                        'method': smoothing_method,
+                        'parameters': smoothing_params
                     }
                     
-                    smoothed_result, original_quantities, smoothed_quantities = process_data(
-                        final_filtered_data,
-                        smoothing_method,
-                        smoothing_params
-                    )
-                    
-                    if smoothed_result is not None:
-                        final_filtered_data = smoothed_result
-                        processed_data['original_quantities'] = original_quantities
-                        processed_data['smoothed_quantities'] = smoothed_quantities
-                        st.session_state['processed_steps'][uploaded_file.name].append('smoothing')
-                    
-                except Exception as e:
-                    st.error(f"Error during smoothing: {str(e)}")
-                    processed_data['original_quantities'] = None
-                    processed_data['smoothed_quantities'] = None
+                    if uploaded_file.name not in st.session_state['processed_steps']:
+                        st.session_state['processed_steps'][uploaded_file.name] = []
+                    st.session_state['processed_steps'][uploaded_file.name].append('smoothing')
 
             processed_data['smoothed'] = final_filtered_data.copy()
             
-            # Store processed data in session state
+            # Cache the processed data after smoothing 
             cache_key = get_cache_key(uploaded_file.name, processing_params)
             st.session_state['processed_data'][cache_key] = processed_data
-            
             progress_bar.progress(90)
-                    
+            
             # 6. Apply normalization if selected
             status_container.text("Applying normalization...")
             if normalization_method != "none":
