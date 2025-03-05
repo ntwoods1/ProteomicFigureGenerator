@@ -10,6 +10,7 @@ from matplotlib.patches import Ellipse
 import seaborn as sns
 from scipy.stats import ttest_ind, stats
 from scipy.cluster.hierarchy import linkage, dendrogram
+from statsmodels.stats.multitest import multipletests
 import io
 from utils.data_processing import (
     analyze_dataset_structure, 
@@ -137,7 +138,6 @@ def extract_gene_name(description):
 
 def apply_multiple_testing_correction(p_values, method='bonferroni'):
     """Apply multiple testing correction to p-values."""
-    from scipy.stats import multipletests
     import numpy as np
     
     # Remove any NaN values before correction
