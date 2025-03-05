@@ -425,25 +425,12 @@ if uploaded_files:
                     # Apply smoothing only to quantity columns
                     if smoothing_method == "Moving Average":
                         smoothed_quantities = apply_moving_average(data_to_smooth, window_size)
-                        st.write(f"Applied Moving Average smoothing with window size {window_size}")
                     elif smoothing_method == "Savitzky-Golay":
                         smoothed_quantities = apply_savitzky_golay(data_to_smooth, window_length, polyorder)
-                        st.write(f"Applied Savitzky-Golay smoothing with window length {window_length} and polynomial order {polyorder}")
                     elif smoothing_method == "LOESS":
                         smoothed_quantities = apply_loess_smoothing(data_to_smooth, frac, iterations)
-                        st.write(f"Applied LOESS smoothing with fraction {frac} and {iterations} iterations")
                     else:  # Exponential
                         smoothed_quantities = apply_exponential_smoothing(data_to_smooth, alpha)
-                        st.write(f"Applied Exponential smoothing with alpha {alpha}")
-                    
-                    # Show sample of original vs smoothed data
-                    st.write("Sample of original vs smoothed data:")
-                    sample_protein = data_to_smooth.index[0]
-                    comparison = pd.DataFrame({
-                        'Original': data_to_smooth.loc[sample_protein],
-                        'Smoothed': smoothed_quantities.loc[sample_protein]
-                    })
-                    st.write(comparison)
                     
                     # Create new DataFrame with smoothed quantities and original non-quantity columns 
                     final_filtered_data = final_filtered_data.copy()
@@ -647,29 +634,52 @@ if uploaded_files:
                 # Get only PG.Quantity columns for visualization
                 quantity_cols = [col for col in final_data.columns if col.endswith("PG.Quantity")]
                 
-                # Select a random protein with sufficient variation
-                example_protein = final_data.sample(n=1).index[0]
+                # Select proteins with significant variation for better visualization
+                std_devs = processed_data['missing_handled'][quantity_cols].std(axis=1)
+                variable_proteins = std_devs.nlargest(5).index
                 
-                # Create comparison plot
-                fig, ax = plt.subplots(figsize=(10, 5))
-                
-                # Get original and smoothed values for quantity columns only
-                original_values = processed_data['missing_handled'].loc[example_protein, quantity_cols]
-                smoothed_values = processed_data['smoothed'].loc[example_protein, quantity_cols]
-                
-                x = range(len(quantity_cols))
-                ax.plot(x, original_values, 'o-', label='Original', alpha=0.5)
-                ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2)
-                
-                ax.set_xticks(x)
-                ax.set_xticklabels(quantity_cols, rotation=45, ha='right')
-                ax.set_ylabel('Intensity')
-                ax.set_title(f'Smoothing Effect Example\nProtein: {example_protein}')
-                ax.legend()
-                
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
+                for protein in variable_proteins:
+                    st.write(f"\n**Protein: {protein}**")
+                    
+                    # Create comparison plot
+                    fig, ax = plt.subplots(figsize=(12, 6))
+                    
+                    # Get original and smoothed values for quantity columns only
+                    original_values = pd.to_numeric(processed_data['missing_handled'].loc[protein, quantity_cols], errors='coerce')
+                    smoothed_values = pd.to_numeric(processed_data['smoothed'].loc[protein, quantity_cols], errors='coerce')
+                    
+                    x = range(len(quantity_cols))
+                    ax.plot(x, original_values, 'o-', label='Original', alpha=0.7, color='blue')
+                    ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2, color='red')
+                    
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(quantity_cols, rotation=45, ha='right')
+                    ax.set_ylabel('Intensity')
+                    ax.set_title(f'Smoothing Effect Comparison')
+                    ax.legend()
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    # Show numeric comparison
+                    comparison = pd.DataFrame({
+                        'Original': original_values,
+                        'Smoothed': smoothed_values,
+                        'Difference': smoothed_values - original_values
+                    })
+                    st.write("Numeric comparison:")
+                    st.dataframe(comparison.round(3))
+                    
+                    # Calculate smoothing effect statistics
+                    smoothing_stats = {
+                        'Mean Absolute Change': abs(comparison['Difference']).mean(),
+                        'Max Absolute Change': abs(comparison['Difference']).max(),
+                        'Standard Deviation Reduction': original_values.std() - smoothed_values.std(),
+                    }
+                    st.write("\nSmoothing effect statistics:")
+                    for stat, value in smoothing_stats.items():
+                        st.write(f"- {stat}: {value:.3f}")
 
     elif active_tab == "Volcano Plot":
         st.header("Volcano Plot")
