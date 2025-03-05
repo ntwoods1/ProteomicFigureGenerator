@@ -135,6 +135,18 @@ def extract_gene_name(description):
             return None
     return None
 
+def apply_multiple_testing_correction(p_values, method='bonferroni'):
+    """Apply multiple testing correction to p-values."""
+    from scipy import stats
+    import numpy as np
+    
+    if method == 'bonferroni':
+        return stats.multipletests(p_values, method='bonferroni')[1]
+    elif method == 'fdr_bh':
+        return stats.multipletests(p_values, method='fdr_bh')[1]
+    else:
+        return p_values  # No correction
+
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
     from scipy import stats
@@ -556,6 +568,22 @@ if uploaded_files:
                                     key=f"{comp_key}_group2"
                                 )
 
+                            # Add multiple testing correction options
+                            correction_method = st.selectbox(
+                                "Multiple testing correction method",
+                                options=['none', 'bonferroni', 'fdr_bh'],
+                                format_func=lambda x: {
+                                    'none': 'No correction',
+                                    'bonferroni': 'Bonferroni correction',
+                                    'fdr_bh': 'Benjamini-Hochberg (FDR)'
+                                }[x],
+                                help="Select method for multiple testing correction:\n" +
+                                     "- No correction: Use raw p-values\n" +
+                                     "- Bonferroni: Most conservative, controls family-wise error rate\n" +
+                                     "- Benjamini-Hochberg: Controls false discovery rate (FDR)",
+                                key=f"{comp_key}_correction"
+                            )
+
                             if group1 and group2:
                                 try:
                                     # Get the quantity columns for each group
@@ -581,10 +609,25 @@ if uploaded_files:
                                             else:
                                                 p_values.append(np.nan)
 
+                                        # Apply multiple testing correction
+                                        valid_mask = ~np.isnan(p_values)
+                                        valid_p_values = np.array(p_values)[valid_mask]
+                                        
+                                        if len(valid_p_values) > 0:
+                                            adjusted_p_values = np.full_like(p_values, np.nan)
+                                            adjusted_p_values[valid_mask] = apply_multiple_testing_correction(
+                                                valid_p_values, 
+                                                method=correction_method
+                                            )
+                                        else:
+                                            adjusted_p_values = p_values
+
                                         # Create DataFrame for volcano plot
                                         volcano_data = pd.DataFrame({
                                             'log2FoldChange': log2fc,
-                                            '-log10(p-value)': -np.log10(p_values),
+                                            '-log10(p-value)': -np.log10(adjusted_p_values),  # Use adjusted p-values for plotting
+                                            'raw_p_value': p_values,
+                                            'adjusted_p_value': adjusted_p_values,
                                             'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index,
                                             'Description': selected_data['Description'] if 'Description' in selected_data.columns else '',
                                             'Mean1': group1_data.mean(axis=1),
