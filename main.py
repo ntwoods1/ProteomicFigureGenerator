@@ -1779,6 +1779,14 @@ if uploaded_files:
                     if show_fold_change:
                         use_log2 = st.toggle("Use log2 fold change", value=False)
 
+                    # Multiple testing correction selection
+                    multiple_testing = st.selectbox(
+                        "Multiple testing correction",
+                        options=["None", "Bonferroni", "FDR"],
+                        help="Bonferroni is more conservative, FDR (False Discovery Rate) is less stringent",
+                        key="multiple_testing"
+                    )
+
                     if stat_test == "T-test vs Control":
                         control_group = st.selectbox(
                             "Select control group",
