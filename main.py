@@ -137,15 +137,27 @@ def extract_gene_name(description):
 
 def apply_multiple_testing_correction(p_values, method='bonferroni'):
     """Apply multiple testing correction to p-values."""
-    from scipy import stats
+    from scipy.stats import multipletests
     import numpy as np
     
+    # Remove any NaN values before correction
+    valid_mask = ~np.isnan(p_values)
+    valid_p_values = np.array(p_values)[valid_mask]
+    
+    if len(valid_p_values) == 0:
+        return p_values
+        
+    # Initialize output array with NaN
+    corrected_p_values = np.full_like(p_values, np.nan)
+    
     if method == 'bonferroni':
-        return stats.multipletests(p_values, method='bonferroni')[1]
+        corrected_p_values[valid_mask] = multipletests(valid_p_values, method='bonferroni')[1]
     elif method == 'fdr_bh':
-        return stats.multipletests(p_values, method='fdr_bh')[1]
+        corrected_p_values[valid_mask] = multipletests(valid_p_values, method='fdr_bh')[1]
     else:
-        return p_values  # No correction
+        corrected_p_values[valid_mask] = valid_p_values  # No correction
+        
+    return corrected_p_values
 
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
