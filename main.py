@@ -16,11 +16,7 @@ from utils.data_processing import (
     calculate_cv_table, 
     handle_missing_values,
     normalize_data,
-    filter_by_peptide_count,
-    apply_moving_average,
-    apply_savitzky_golay,
-    apply_loess_smoothing,
-    apply_exponential_smoothing
+    filter_by_peptide_count  
 )
 from itertools import combinations
 
@@ -46,10 +42,6 @@ if 'filtering_stats' not in st.session_state:
     st.session_state['filtering_stats'] = {}
 if 'pca_selections' not in st.session_state:
     st.session_state['pca_selections'] = {}
-if 'smoothed_data' not in st.session_state:
-    st.session_state['smoothed_data'] = {}
-if 'processed_steps' not in st.session_state:
-    st.session_state['processed_steps'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -109,76 +101,12 @@ missing_values_method = st.sidebar.selectbox(
     help="Method to handle missing values in the dataset. Only applies to PG.Quantity columns."
 )
 
-# 4. Data Smoothing Options
-st.sidebar.subheader("4. Data Smoothing")
-apply_smoothing = st.sidebar.checkbox(
-    "Apply data smoothing",
-    value=False,
-    help="Apply smoothing techniques to reduce noise in the data"
-)
-
-if apply_smoothing:
-    smoothing_method = st.sidebar.selectbox(
-        "Smoothing method",
-        options=["Moving Average", "Savitzky-Golay", "LOESS", "Exponential"],
-        help="Select the smoothing method to apply"
-    )
-
-    if smoothing_method == "Moving Average":
-        window_size = st.sidebar.slider(
-            "Window size",
-            min_value=3,
-            max_value=11,
-            value=3,
-            step=2,
-            help="Number of points to use for moving average (must be odd)"
-        )
-    elif smoothing_method == "Savitzky-Golay":
-        window_length = st.sidebar.slider(
-            "Window length",
-            min_value=5,
-            max_value=11,
-            value=5,
-            step=2,
-            help="Length of the filter window (must be odd)"
-        )
-        polyorder = st.sidebar.slider(
-            "Polynomial order",
-            min_value=2,
-            max_value=4,
-            value=2,
-            help="Order of the polynomial used to fit the samples"
-        )
-    elif smoothing_method == "LOESS":
-        frac = st.sidebar.slider(
-            "Fraction of points",
-            min_value=0.1,
-            max_value=0.5,
-            value=0.2,
-            help="Fraction of points to use for local regression"
-        )
-        iterations = st.sidebar.slider(
-            "Number of iterations",
-            min_value=1,
-            max_value=5,
-            value=3,
-            help="Number of iterations for robust fitting"
-        )
-    else:  # Exponential
-        alpha = st.sidebar.slider(
-            "Smoothing factor (α)",
-            min_value=0.1,
-            max_value=0.9,
-            value=0.3,
-            help="Smoothing factor for exponential smoothing"
-        )
-
-# 5. Normalization Options
-st.sidebar.subheader("5. Normalization")
+# 4. Normalization Options
+st.sidebar.subheader("4. Normalization")
 normalization_method = st.sidebar.selectbox(
     "Normalization method",
-    options=["none", "log2", "zscore", "median"],
-    help="Method to normalize the data"
+    options=["none", "log2", "zscore", "median", "loess"],
+    help="Method to normalize the data. LOESS performs local regression smoothing."
 )
 
 # Centering Options
@@ -196,7 +124,6 @@ if normalization_method != "none":
             help="Method to center the rows"
         )
 
-
 # Function to extract gene names from the Description column
 def extract_gene_name(description):
     if pd.isna(description):
@@ -207,55 +134,6 @@ def extract_gene_name(description):
         except IndexError:
             return None
     return None
-
-def process_data(data, smoothing_method=None, smoothing_params=None):
-    """Process data with smoothing if specified"""
-    try:
-        # Get only PG.Quantity columns for smoothing
-        quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
-        if not quantity_cols:
-            st.error("No PG.Quantity columns found for smoothing")
-            return None, None, None
-            
-        data_to_smooth = data[quantity_cols].copy()
-        
-        # Convert data to numeric, handling any conversion errors
-        for col in quantity_cols:
-            data_to_smooth[col] = pd.to_numeric(data_to_smooth[col], errors='coerce')
-        
-        result = data.copy()
-        smoothed_data = data_to_smooth.copy()
-        
-        if smoothing_method and smoothing_params:
-            try:
-                # Apply smoothing based on method
-                if smoothing_method == "Moving Average":
-                    smoothed_data = apply_moving_average(data_to_smooth, smoothing_params['window_size'])
-                elif smoothing_method == "Savitzky-Golay":
-                    smoothed_data = apply_savitzky_golay(
-                        data_to_smooth, 
-                        smoothing_params['window_length'],
-                        smoothing_params['polyorder']
-                    )
-                elif smoothing_method == "LOESS":
-                    smoothed_data = apply_loess_smoothing(
-                        data_to_smooth,
-                        smoothing_params['frac'],
-                        smoothing_params['iterations']
-                    )
-                else:  # Exponential
-                    smoothed_data = apply_exponential_smoothing(data_to_smooth, smoothing_params['alpha'])
-                
-                # Update quantity columns with smoothed data
-                result[quantity_cols] = smoothed_data
-                
-                return result, data_to_smooth, smoothed_data
-            except Exception as e:
-                st.error(f"Error applying smoothing: {str(e)}")
-                return None, None, None
-    except Exception as e:
-        st.error(f"Error processing data: {str(e)}")
-        return None, None, None
 
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
@@ -467,47 +345,7 @@ if uploaded_files:
             processed_data['missing_handled'] = final_filtered_data.copy()
             progress_bar.progress(85)
 
-            # 5. Apply smoothing if selected (before normalization)
-            if apply_smoothing:
-                status_container.text("Applying data smoothing...")
-                smoothing_params = {
-                    'window_size': window_size if smoothing_method == "Moving Average" else None,
-                    'window_length': window_length if smoothing_method == "Savitzky-Golay" else None,
-                    'polyorder': polyorder if smoothing_method == "Savitzky-Golay" else None,
-                    'frac': frac if smoothing_method == "LOESS" else None,
-                    'iterations': iterations if smoothing_method == "LOESS" else None,
-                    'alpha': alpha if smoothing_method == "Exponential" else None
-                }
-                
-                smoothed_result, original_quantities, smoothed_quantities = process_data(
-                    final_filtered_data,
-                    smoothing_method,
-                    smoothing_params
-                )
-                
-                if smoothed_quantities is not None:
-                    final_filtered_data = smoothed_result
-                    processed_data['original_quantities'] = original_quantities
-                    processed_data['smoothed_quantities'] = smoothed_quantities
-                    
-                    # Add smoothing info to stats
-                    processed_data['stats']['smoothing'] = {
-                        'method': smoothing_method,
-                        'parameters': smoothing_params
-                    }
-                    
-                    if uploaded_file.name not in st.session_state['processed_steps']:
-                        st.session_state['processed_steps'][uploaded_file.name] = []
-                    st.session_state['processed_steps'][uploaded_file.name].append('smoothing')
-
-            processed_data['smoothed'] = final_filtered_data.copy()
-            
-            # Cache the processed data after smoothing 
-            cache_key = get_cache_key(uploaded_file.name, processing_params)
-            st.session_state['processed_data'][cache_key] = processed_data
-            progress_bar.progress(90)
-            
-            # 6. Apply normalization if selected
+            # 5. Apply normalization if selected
             status_container.text("Applying normalization...")
             if normalization_method != "none":
                 try:
@@ -525,21 +363,7 @@ if uploaded_files:
                 normalized_data = final_filtered_data.copy()
 
             processed_data['normalized'] = normalized_data
-            progress_bar.progress(98)
-
-            # Update stats with smoothing info if applied
-            if apply_smoothing:
-                processed_data['stats']['smoothing'] = {
-                    'method': smoothing_method,
-                    'parameters': {
-                        'window_size': window_size if smoothing_method == "Moving Average" else None,
-                        'window_length': window_length if smoothing_method == "Savitzky-Golay" else None,
-                        'polyorder': polyorder if smoothing_method == "Savitzky-Golay" else None,
-                        'frac': frac if smoothing_method == "LOESS" else None,
-                        'iterations': iterations if smoothing_method == "LOESS" else None,
-                        'alpha': alpha if smoothing_method == "Exponential" else None
-                    }
-                }
+            progress_bar.progress(95)
 
             # Store the processed data with updated stats
             processed_data['stats'] = {
@@ -681,80 +505,6 @@ if uploaded_files:
 
             st.subheader("Basic Statistics")
             st.write(final_data.describe())
-
-            if 'smoothing' in processed_data['stats'] and processed_data['original_quantities'] is not None:
-                st.subheader("Data Smoothing Analysis")
-                smoothing_info = processed_data['stats']['smoothing']
-                st.write(f"**Applied Smoothing Method:** {smoothing_info['method']}")
-                
-                # Display parameters used
-                st.write("**Smoothing Parameters:**")
-                params = smoothing_info['parameters']
-                for param, value in params.items():
-                    if value is not None:
-                        st.write(f"- {param}: {value}")
-                
-                # Get quantity columns for visualization
-                quantity_cols = processed_data['original_quantities'].columns
-                
-                # Calculate standard deviations to find proteins with notable variation
-                std_devs = processed_data['original_quantities'].std(axis=1)
-                variable_proteins = std_devs.nlargest(5).index
-                
-                # Create tabs for each protein example
-                protein_tabs = st.tabs([f"Protein {i+1}" for i in range(len(variable_proteins))])
-                
-                for idx, (protein, tab) in enumerate(zip(variable_proteins, protein_tabs)):
-                    with tab:
-                        # Get original and smoothed values
-                        original_values = processed_data['original_quantities'].loc[protein]
-                        smoothed_values = processed_data['smoothed_quantities'].loc[protein]
-                        
-                        # Create comparison plot
-                        fig, ax = plt.subplots(figsize=(12, 6))
-                        x = range(len(quantity_cols))
-                        
-                        # Plot original data points and line
-                        ax.plot(x, original_values, 'o-', label='Original', alpha=0.7, color='blue')
-                        ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2, color='red')
-                        
-                        ax.set_xticks(x)
-                        ax.set_xticklabels(quantity_cols, rotation=45, ha='right')
-                        ax.set_ylabel('Intensity')
-                        ax.set_title(f'Smoothing Effect Comparison\nProtein: {protein}')
-                        ax.legend()
-                        
-                        plt.tight_layout()
-                        st.pyplot(fig)
-                        plt.close()
-                        
-                        # Show numeric comparison in an expander
-                        with st.expander("See numeric comparison"):
-                            comparison = pd.DataFrame({
-                                'Original': original_values,
-                                'Smoothed': smoothed_values,
-                                'Difference': smoothed_values - original_values
-                            })
-                            st.dataframe(comparison.round(3))
-                            
-                            # Calculate smoothing effect statistics
-                            smoothing_stats = {
-                                'Mean Absolute Change': abs(comparison['Difference']).mean(),
-                                'Max Absolute Change': abs(comparison['Difference']).max(),
-                                'Standard Deviation Reduction': original_values.std() - smoothed_values.std()
-                            }
-                            st.write("\nSmoothing effect statistics:")
-                            for stat, value in smoothing_stats.items():
-                                st.write(f"- {stat}: {value:.3f}")
-
-                        # Add download button for comparison data
-                        csv = comparison.to_csv(index=True)
-                        st.download_button(
-                            label="Download Comparison Data (CSV)",
-                            data=csv,
-                            file_name=f"smoothing_comparison_{protein}.csv",
-                            mime="text/csv"
-                        )
 
     elif active_tab == "Volcano Plot":
         st.header("Volcano Plot")
