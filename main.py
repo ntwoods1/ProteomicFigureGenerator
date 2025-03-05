@@ -48,6 +48,8 @@ if 'pca_selections' not in st.session_state:
     st.session_state['pca_selections'] = {}
 if 'smoothed_data' not in st.session_state:
     st.session_state['smoothed_data'] = {}
+if 'processed_steps' not in st.session_state:
+    st.session_state['processed_steps'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -234,8 +236,8 @@ def process_data(data, smoothing_method=None, smoothing_params=None):
         # Update quantity columns with smoothed data
         result = data.copy()
         result[quantity_cols] = smoothed_data
-        return result
-    return data
+        return result, data_to_smooth, smoothed_data
+    return data, None, None
 
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
@@ -451,29 +453,26 @@ if uploaded_files:
             if apply_smoothing:
                 status_container.text("Applying data smoothing...")
                 try:
-                    # Get only PG.Quantity columns for smoothing
-                    quantity_cols = [col for col in final_filtered_data.columns if col.endswith("PG.Quantity")]
-                    data_to_smooth = final_filtered_data[quantity_cols].copy()
+                    smoothing_params = {
+                        'window_size': window_size if smoothing_method == "Moving Average" else None,
+                        'window_length': window_length if smoothing_method == "Savitzky-Golay" else None,
+                        'polyorder': polyorder if smoothing_method == "Savitzky-Golay" else None,
+                        'frac': frac if smoothing_method == "LOESS" else None,
+                        'iterations': iterations if smoothing_method == "LOESS" else None,
+                        'alpha': alpha if smoothing_method == "Exponential" else None
+                    }
                     
-                    # Store original data for comparison
-                    original_data = data_to_smooth.copy()
+                    smoothed_result, original_quantities, smoothed_quantities = process_data(
+                        final_filtered_data,
+                        smoothing_method,
+                        smoothing_params
+                    )
                     
-                    # Apply smoothing only to quantity columns
-                    if smoothing_method == "Moving Average":
-                        smoothed_quantities = apply_moving_average(data_to_smooth, window_size)
-                    elif smoothing_method == "Savitzky-Golay":
-                        smoothed_quantities = apply_savitzky_golay(data_to_smooth, window_length, polyorder)
-                    elif smoothing_method == "LOESS":
-                        smoothed_quantities = apply_loess_smoothing(data_to_smooth, frac, iterations)
-                    else:  # Exponential
-                        smoothed_quantities = apply_exponential_smoothing(data_to_smooth, alpha)
-                    
-                    # Update the DataFrame with smoothed quantities
-                    final_filtered_data[quantity_cols] = smoothed_quantities
-                    
-                    # Store smoothing information
-                    processed_data['original_quantities'] = original_data
-                    processed_data['smoothed_quantities'] = smoothed_quantities
+                    if smoothed_result is not None:
+                        final_filtered_data = smoothed_result
+                        processed_data['original_quantities'] = original_quantities
+                        processed_data['smoothed_quantities'] = smoothed_quantities
+                        st.session_state['processed_steps'][uploaded_file.name].append('smoothing')
                     
                 except Exception as e:
                     st.error(f"Error during smoothing: {str(e)}")
