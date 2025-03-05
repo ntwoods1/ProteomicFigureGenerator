@@ -135,23 +135,6 @@ def extract_gene_name(description):
             return None
     return None
 
-def apply_multiple_testing_correction(p_values, method='bonferroni'):
-    """Apply multiple testing correction to p-values."""
-    from scipy import stats
-    import numpy as np
-    
-    if method == 'bonferroni':
-        # Bonferroni correction
-        return np.minimum(p_values * len(p_values), 1.0)
-    elif method == 'fdr':
-        # Benjamini-Hochberg FDR
-        ranked_p_values = stats.rankdata(p_values)
-        fdr = p_values * len(p_values) / ranked_p_values
-        fdr[fdr > 1] = 1  # Cap at 1
-        return fdr
-    else:
-        return p_values
-
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
     from scipy import stats
@@ -580,11 +563,6 @@ if uploaded_files:
                                     group2_cols = [col for col in structure["replicates"][group2] if col.endswith("PG.Quantity")]
 
                                     if group1_cols and group2_cols:
-                                        # Lists to collect p-values and identifiers
-                                        all_p_values = []
-                                        p_value_indices = []
-                                        stats_data = []
-
                                         # Calculate fold change and p-values
                                         group1_data = selected_data[group1_cols]
                                         group2_data = selected_data[group2_cols]
@@ -592,96 +570,21 @@ if uploaded_files:
                                         # Calculate log2 fold change
                                         log2fc = np.log2(group2_data.mean(axis=1) / group1_data.mean(axis=1))
 
-                                        # Calculate p-values using t-test and store stats
+                                        # Calculate p-values using t-test
                                         p_values = []
-                                        for protein_name in selected_data.index:
-                                            g1_values = group1_data.loc[protein_name].dropna()
-                                            g2_values = group2_data.loc[protein_name].dropna()
+                                        for idx in selected_data.index:
+                                            g1_values = group1_data.loc[idx].dropna()
+                                            g2_values = group2_data.loc[idx].dropna()
                                             if len(g1_values) >= 2 and len(g2_values) >= 2:
-                                                t_stat, p_val = stats.ttest_ind(g1_values, g2_values)
-                                        
-                                                # Store p-value for multiple testing correction
-                                                all_p_values.append(p_val)
-                                                p_value_indices.append((protein_name, group))
-                                        
-                                                # Calculate fold change for statistics
-                                                fold_change = float(g2_values.mean() / g1_values.mean())
-                                                if normalization_method == "log2":
-                                                    fold_change = np.log2(fold_change)
-
-                                                stats_data.append({
-                                                    'Protein': protein_name,
-                                                    'Control': group1,
-                                                    'Test Group': group2,
-                                                    'Test Type': 'T-test',
-                                                    'Raw P-value': p_val,
-                                                    'Fold Change': fold_change,
-                                                    'Fold Change Type': 'log2' if normalization_method == "log2" else 'regular'
-                                                })
+                                                _, p_val = ttest_ind(g1_values, g2_values)
                                                 p_values.append(p_val)
                                             else:
                                                 p_values.append(np.nan)
 
-                                        # Apply multiple testing correction if selected
-                                        multiple_testing = st.selectbox(
-                                            "Multiple testing correction",
-                                            ["None", "Bonferroni", "FDR"],
-                                            key=f"{comp_key}_correction"
-                                        )
-
-                                        if multiple_testing != "None" and all_p_values:
-                                            adjusted_p_values = apply_multiple_testing_correction(
-                                                np.array(all_p_values), 
-                                                method=multiple_testing.lower()
-                                            )
-                                                
-                                            # Update statistics with adjusted p-values
-                                            for i, (protein_name, _) in enumerate(p_value_indices):
-                                                adjusted_p = adjusted_p_values[i]
-                                                # Find and update the corresponding entry in stats_data
-                                                for stat in stats_data:
-                                                    if stat['Protein'] == protein_name:
-                                                        stat['Adjusted P-value'] = adjusted_p
-                                                        stat['Adjustment Method'] = multiple_testing
-                                                        stat['Significant'] = adjusted_p < 0.05
-
-                                        # Create and display statistics table
-                                        if stats_data:
-                                            st.subheader("Statistical Analysis Results")
-                                            stats_df = pd.DataFrame(stats_data)
-                                                
-                                            # Reorder columns to show p-values side by side
-                                            column_order = ['Protein', 'Control', 'Test Group', 'Test Type', 
-                                                         'Raw P-value', 'Adjusted P-value', 'Adjustment Method',
-                                                         'Fold Change', 'Fold Change Type', 'Significant']
-                                            stats_df = stats_df.reindex(columns=[col for col in column_order if col in stats_df.columns])
-                                                
-                                            # Format p-values to scientific notation
-                                            if 'Raw P-value' in stats_df.columns:
-                                                stats_df['Raw P-value'] = stats_df['Raw P-value'].apply(lambda x: f"{x:.2e}")
-                                            if 'Adjusted P-value' in stats_df.columns:
-                                                stats_df['Adjusted P-value'] = stats_df['Adjusted P-value'].apply(lambda x: f"{x:.2e}")
-                                                
-                                            st.dataframe(stats_df)
-
-                                            # Add download button for statistics
-                                            csv = stats_df.to_csv(index=False)
-                                            st.download_button(
-                                                label="Download Statistics (CSV)",
-                                                data=csv,
-                                                file_name="statistical_analysis.csv",
-                                                mime="text/csv"
-                                            )
-
                                         # Create DataFrame for volcano plot
-                                        if multiple_testing != "None":
-                                            plot_p_values = adjusted_p_values
-                                        else:
-                                            plot_p_values = p_values
-                                        
                                         volcano_data = pd.DataFrame({
                                             'log2FoldChange': log2fc,
-                                            '-log10(p-value)': -np.log10(plot_p_values),
+                                            '-log10(p-value)': -np.log10(p_values),
                                             'Gene Name': selected_data['Gene Name'] if 'Gene Name' in selected_data.columns else selected_data.index,
                                             'Description': selected_data['Description'] if 'Description' in selected_data.columns else '',
                                             'Mean1': group1_data.mean(axis=1),
@@ -1859,14 +1762,6 @@ if uploaded_files:
                     if show_fold_change:
                         use_log2 = st.toggle("Use log2 fold change", value=False)
 
-                    # Multiple testing correction selection
-                    multiple_testing = st.selectbox(
-                        "Multiple testing correction",
-                        options=["None", "Bonferroni", "FDR"],
-                        help="Bonferroni is more conservative, FDR (False Discovery Rate) is less stringent",
-                        key="multiple_testing"
-                    )
-
                     if stat_test == "T-test vs Control":
                         control_group = st.selectbox(
                             "Select control group",
@@ -1886,25 +1781,15 @@ if uploaded_files:
 
                         # Find matching proteins in the dataset
                         if 'Gene Name' in data.columns:
-                            # Use exact matching instead of partial matching
-                            matches = data[data['Gene Name'].isin(protein_list)]
+                            matches = data[data['Gene Name'].str.contains('|'.join(protein_list), case=False, na=False)]
                         else:
-                            # Use exact matching for index
-                            matches = data[data.index.isin(protein_list)]
+                            matches = data[data.index.str.contains('|'.join(protein_list), case=False, na=False)]
 
                         if not matches.empty:
                             st.write(f"Found {len(matches)} matching proteins")
-                            
-                            # Add information about which proteins were not found
-                            found_proteins = matches['Gene Name'].tolist() if 'Gene Name' in matches.columns else matches.index.tolist()
-                            not_found = [p for p in protein_list if p not in found_proteins]
-                            if not_found:
-                                st.warning(f"Could not find the following proteins: {', '.join(not_found)}")
 
-                            # Initialize statistics table and multiple testing correction data
+                            # Initialize statistics table
                             stats_data = []
-                            all_p_values = []
-                            p_value_indices = []  # To keep track of which comparison each p-value belongs to
 
                             # Create bar plots for each protein
                             for idx, protein in matches.iterrows():
@@ -2020,38 +1905,15 @@ if uploaded_files:
                                     
                                     if all(len(g) >= 2 for g in groups_for_anova):
                                         f_stat, p_val = stats.f_oneway(*groups_for_anova)
-                                        
-                                        # Store p-value for multiple testing correction
-                                        all_p_values.append(p_val)
-                                        p_value_indices.append((protein_name, "ANOVA"))
-                                        
                                         # Add to statistics table
                                         stats_data.append({
                                             'Protein': protein_name,
                                             'Groups': ', '.join([group_names[g] for g in selected_groups]),
                                             'Test Type': 'ANOVA',
-                                            'P-value': p_val
+                                            'P-value': p_val,
+                                            'Significant': p_val < 0.05
                                         })
-
-                                # Apply multiple testing correction if selected
-                                if multiple_testing != "None" and all_p_values:
-                                    adjusted_p_values = apply_multiple_testing_correction(
-                                        np.array(all_p_values), 
-                                        method=multiple_testing.lower()
-                                    )
-                                    
-                                    # Update statistics with adjusted p-values
-                                    for i, (protein_name, group) in enumerate(p_value_indices):
-                                        adjusted_p = adjusted_p_values[i]
-                                        # Update the corresponding entry in stats_data
-                                        for stat in stats_data:
-                                            if stat['Protein'] == protein_name and (
-                                                (stat['Test Type'] == 'T-test' and stat['Test Group'] == group_names[group]) or
-                                                (stat['Test Type'] == 'ANOVA' and group == "ANOVA")
-                                            ):
-                                                stat['Adjusted P-value'] = adjusted_p
-                                                stat['Adjustment Method'] = multiple_testing
-                                                stat['Significant'] = adjusted_p < 0.05
+                                        # ANOVA p-value text annotation removed but value stored in stats
 
                                 # Customize plot
                                 ax.set_xticks(range(len(selected_groups)))
