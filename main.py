@@ -215,10 +215,16 @@ def process_data(data, smoothing_method=None, smoothing_params=None):
         quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
         if not quantity_cols:
             st.error("No PG.Quantity columns found for smoothing")
-            return data, None, None
+            return None, None, None
             
         data_to_smooth = data[quantity_cols].copy()
+        
+        # Convert data to numeric, handling any conversion errors
+        for col in quantity_cols:
+            data_to_smooth[col] = pd.to_numeric(data_to_smooth[col], errors='coerce')
+        
         result = data.copy()
+        smoothed_data = data_to_smooth.copy()
         
         if smoothing_method and smoothing_params:
             try:
@@ -243,16 +249,13 @@ def process_data(data, smoothing_method=None, smoothing_params=None):
                 # Update quantity columns with smoothed data
                 result[quantity_cols] = smoothed_data
                 
-                # Return original data_to_smooth for comparison
                 return result, data_to_smooth, smoothed_data
             except Exception as e:
-                st.error(f"Error during smoothing: {str(e)}")
-                return data, None, None
+                st.error(f"Error applying smoothing: {str(e)}")
+                return None, None, None
     except Exception as e:
         st.error(f"Error processing data: {str(e)}")
-        return data, None, None
-        
-    return data, None, None
+        return None, None, None
 
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
@@ -734,7 +737,7 @@ if uploaded_files:
                             })
                             st.dataframe(comparison.round(3))
                             
-                            # Show smoothing effect statistics
+                            # Calculate smoothing effect statistics
                             smoothing_stats = {
                                 'Mean Absolute Change': abs(comparison['Difference']).mean(),
                                 'Max Absolute Change': abs(comparison['Difference']).max(),
