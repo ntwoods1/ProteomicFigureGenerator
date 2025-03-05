@@ -1806,12 +1806,20 @@ if uploaded_files:
 
                         # Find matching proteins in the dataset
                         if 'Gene Name' in data.columns:
-                            matches = data[data['Gene Name'].str.contains('|'.join(protein_list), case=False, na=False)]
+                            # Use exact matching instead of partial matching
+                            matches = data[data['Gene Name'].isin(protein_list)]
                         else:
-                            matches = data[data.index.str.contains('|'.join(protein_list), case=False, na=False)]
+                            # Use exact matching for index
+                            matches = data[data.index.isin(protein_list)]
 
                         if not matches.empty:
                             st.write(f"Found {len(matches)} matching proteins")
+                            
+                            # Add information about which proteins were not found
+                            found_proteins = matches['Gene Name'].tolist() if 'Gene Name' in matches.columns else matches.index.tolist()
+                            not_found = [p for p in protein_list if p not in found_proteins]
+                            if not_found:
+                                st.warning(f"Could not find the following proteins: {', '.join(not_found)}")
 
                             # Initialize statistics table and multiple testing correction data
                             stats_data = []
