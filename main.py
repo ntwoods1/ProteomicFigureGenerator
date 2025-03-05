@@ -206,6 +206,37 @@ def extract_gene_name(description):
             return None
     return None
 
+def process_data(data, smoothing_method=None, smoothing_params=None):
+    """Process data with smoothing if specified"""
+    if smoothing_method and smoothing_params:
+        # Get only PG.Quantity columns for smoothing
+        quantity_cols = [col for col in data.columns if col.endswith("PG.Quantity")]
+        data_to_smooth = data[quantity_cols].copy()
+        
+        # Apply smoothing based on method
+        if smoothing_method == "Moving Average":
+            smoothed_data = apply_moving_average(data_to_smooth, smoothing_params['window_size'])
+        elif smoothing_method == "Savitzky-Golay":
+            smoothed_data = apply_savitzky_golay(
+                data_to_smooth, 
+                smoothing_params['window_length'],
+                smoothing_params['polyorder']
+            )
+        elif smoothing_method == "LOESS":
+            smoothed_data = apply_loess_smoothing(
+                data_to_smooth,
+                smoothing_params['frac'],
+                smoothing_params['iterations']
+            )
+        else:  # Exponential
+            smoothed_data = apply_exponential_smoothing(data_to_smooth, smoothing_params['alpha'])
+        
+        # Update quantity columns with smoothed data
+        result = data.copy()
+        result[quantity_cols] = smoothed_data
+        return result
+    return data
+
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
     from scipy import stats
@@ -416,13 +447,16 @@ if uploaded_files:
             processed_data['missing_handled'] = final_filtered_data.copy()
             progress_bar.progress(85)
 
-            # 5. Apply smoothing if selected
+            # 5. Apply smoothing if selected (before normalization)
             if apply_smoothing:
                 status_container.text("Applying data smoothing...")
                 try:
                     # Get only PG.Quantity columns for smoothing
                     quantity_cols = [col for col in final_filtered_data.columns if col.endswith("PG.Quantity")]
                     data_to_smooth = final_filtered_data[quantity_cols].copy()
+                    
+                    # Store original data for comparison
+                    original_data = data_to_smooth.copy()
                     
                     # Apply smoothing only to quantity columns
                     if smoothing_method == "Moving Average":
@@ -434,13 +468,24 @@ if uploaded_files:
                     else:  # Exponential
                         smoothed_quantities = apply_exponential_smoothing(data_to_smooth, alpha)
                     
-                    # Create new DataFrame with smoothed quantities and original non-quantity columns 
-                    final_filtered_data = final_filtered_data.copy()
+                    # Update the DataFrame with smoothed quantities
                     final_filtered_data[quantity_cols] = smoothed_quantities
+                    
+                    # Store smoothing information
+                    processed_data['original_quantities'] = original_data
+                    processed_data['smoothed_quantities'] = smoothed_quantities
+                    
                 except Exception as e:
                     st.error(f"Error during smoothing: {str(e)}")
+                    processed_data['original_quantities'] = None
+                    processed_data['smoothed_quantities'] = None
 
             processed_data['smoothed'] = final_filtered_data.copy()
+            
+            # Store processed data in session state
+            cache_key = get_cache_key(uploaded_file.name, processing_params)
+            st.session_state['processed_data'][cache_key] = processed_data
+            
             progress_bar.progress(90)
                     
             # 6. Apply normalization if selected
@@ -618,7 +663,7 @@ if uploaded_files:
             st.subheader("Basic Statistics")
             st.write(final_data.describe())
 
-            if 'smoothing' in processed_data['stats']:
+            if 'smoothing' in processed_data['stats'] and processed_data['original_quantities'] is not None:
                 st.subheader("Data Smoothing Analysis")
                 smoothing_info = processed_data['stats']['smoothing']
                 st.write(f"**Applied Smoothing Method:** {smoothing_info['method']}")
@@ -629,15 +674,12 @@ if uploaded_files:
                 for param, value in params.items():
                     if value is not None:
                         st.write(f"- {param}: {value}")
-
-                # Show example of smoothing effect
-                st.write("**Smoothing Effect Examples**")
                 
-                # Get only PG.Quantity columns for visualization
-                quantity_cols = [col for col in final_data.columns if col.endswith("PG.Quantity")]
+                # Get quantity columns for visualization
+                quantity_cols = processed_data['original_quantities'].columns
                 
                 # Calculate standard deviations to find proteins with notable variation
-                std_devs = processed_data['missing_handled'][quantity_cols].std(axis=1)
+                std_devs = processed_data['original_quantities'].std(axis=1)
                 variable_proteins = std_devs.nlargest(5).index
                 
                 # Create tabs for each protein example
@@ -646,8 +688,8 @@ if uploaded_files:
                 for idx, (protein, tab) in enumerate(zip(variable_proteins, protein_tabs)):
                     with tab:
                         # Get original and smoothed values
-                        original_values = pd.to_numeric(processed_data['missing_handled'].loc[protein, quantity_cols], errors='coerce')
-                        smoothed_values = pd.to_numeric(processed_data['smoothed'].loc[protein, quantity_cols], errors='coerce')
+                        original_values = processed_data['original_quantities'].loc[protein]
+                        smoothed_values = processed_data['smoothed_quantities'].loc[protein]
                         
                         # Create comparison plot
                         fig, ax = plt.subplots(figsize=(12, 6))
@@ -655,7 +697,6 @@ if uploaded_files:
                         
                         # Plot original data points and line
                         ax.plot(x, original_values, 'o-', label='Original', alpha=0.7, color='blue')
-                        # Plot smoothed data with thicker line
                         ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2, color='red')
                         
                         ax.set_xticks(x)
@@ -677,17 +718,17 @@ if uploaded_files:
                             })
                             st.dataframe(comparison.round(3))
                             
-                            # Calculate and show smoothing effect statistics
+                            # Show smoothing effect statistics
                             smoothing_stats = {
                                 'Mean Absolute Change': abs(comparison['Difference']).mean(),
                                 'Max Absolute Change': abs(comparison['Difference']).max(),
-                                'Standard Deviation Reduction': original_values.std() - smoothed_values.std(),
+                                'Standard Deviation Reduction': original_values.std() - smoothed_values.std()
                             }
                             st.write("\nSmoothing effect statistics:")
                             for stat, value in smoothing_stats.items():
                                 st.write(f"- {stat}: {value:.3f}")
 
-                        # Add download buttons for the data
+                        # Add download button for comparison data
                         csv = comparison.to_csv(index=True)
                         st.download_button(
                             label="Download Comparison Data (CSV)",
