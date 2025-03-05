@@ -425,12 +425,25 @@ if uploaded_files:
                     # Apply smoothing only to quantity columns
                     if smoothing_method == "Moving Average":
                         smoothed_quantities = apply_moving_average(data_to_smooth, window_size)
+                        st.write(f"Applied Moving Average smoothing with window size {window_size}")
                     elif smoothing_method == "Savitzky-Golay":
                         smoothed_quantities = apply_savitzky_golay(data_to_smooth, window_length, polyorder)
+                        st.write(f"Applied Savitzky-Golay smoothing with window length {window_length} and polynomial order {polyorder}")
                     elif smoothing_method == "LOESS":
                         smoothed_quantities = apply_loess_smoothing(data_to_smooth, frac, iterations)
+                        st.write(f"Applied LOESS smoothing with fraction {frac} and {iterations} iterations")
                     else:  # Exponential
                         smoothed_quantities = apply_exponential_smoothing(data_to_smooth, alpha)
+                        st.write(f"Applied Exponential smoothing with alpha {alpha}")
+                    
+                    # Show sample of original vs smoothed data
+                    st.write("Sample of original vs smoothed data:")
+                    sample_protein = data_to_smooth.index[0]
+                    comparison = pd.DataFrame({
+                        'Original': data_to_smooth.loc[sample_protein],
+                        'Smoothed': smoothed_quantities.loc[sample_protein]
+                    })
+                    st.write(comparison)
                     
                     # Create new DataFrame with smoothed quantities and original non-quantity columns 
                     final_filtered_data = final_filtered_data.copy()
