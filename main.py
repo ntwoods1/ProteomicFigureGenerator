@@ -135,6 +135,23 @@ def extract_gene_name(description):
             return None
     return None
 
+def apply_multiple_testing_correction(p_values, method='bonferroni'):
+    """Apply multiple testing correction to p-values."""
+    from scipy import stats
+    import numpy as np
+    
+    if method == 'bonferroni':
+        # Bonferroni correction
+        return np.minimum(p_values * len(p_values), 1.0)
+    elif method == 'fdr':
+        # Benjamini-Hochberg FDR
+        ranked_p_values = stats.rankdata(p_values)
+        fdr = p_values * len(p_values) / ranked_p_values
+        fdr[fdr > 1] = 1  # Cap at 1
+        return fdr
+    else:
+        return p_values
+
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
     from scipy import stats
@@ -1788,8 +1805,10 @@ if uploaded_files:
                         if not matches.empty:
                             st.write(f"Found {len(matches)} matching proteins")
 
-                            # Initialize statistics table
+                            # Initialize statistics table and multiple testing correction data
                             stats_data = []
+                            all_p_values = []
+                            p_value_indices = []  # To keep track of which comparison each p-value belongs to
 
                             # Create bar plots for each protein
                             for idx, protein in matches.iterrows():
@@ -1905,15 +1924,38 @@ if uploaded_files:
                                     
                                     if all(len(g) >= 2 for g in groups_for_anova):
                                         f_stat, p_val = stats.f_oneway(*groups_for_anova)
+                                        
+                                        # Store p-value for multiple testing correction
+                                        all_p_values.append(p_val)
+                                        p_value_indices.append((protein_name, "ANOVA"))
+                                        
                                         # Add to statistics table
                                         stats_data.append({
                                             'Protein': protein_name,
                                             'Groups': ', '.join([group_names[g] for g in selected_groups]),
                                             'Test Type': 'ANOVA',
-                                            'P-value': p_val,
-                                            'Significant': p_val < 0.05
+                                            'P-value': p_val
                                         })
-                                        # ANOVA p-value text annotation removed but value stored in stats
+
+                                # Apply multiple testing correction if selected
+                                if multiple_testing != "None" and all_p_values:
+                                    adjusted_p_values = apply_multiple_testing_correction(
+                                        np.array(all_p_values), 
+                                        method=multiple_testing.lower()
+                                    )
+                                    
+                                    # Update statistics with adjusted p-values
+                                    for i, (protein_name, group) in enumerate(p_value_indices):
+                                        adjusted_p = adjusted_p_values[i]
+                                        # Update the corresponding entry in stats_data
+                                        for stat in stats_data:
+                                            if stat['Protein'] == protein_name and (
+                                                (stat['Test Type'] == 'T-test' and stat['Test Group'] == group_names[group]) or
+                                                (stat['Test Type'] == 'ANOVA' and group == "ANOVA")
+                                            ):
+                                                stat['Adjusted P-value'] = adjusted_p
+                                                stat['Adjustment Method'] = multiple_testing
+                                                stat['Significant'] = adjusted_p < 0.05
 
                                 # Customize plot
                                 ax.set_xticks(range(len(selected_groups)))
