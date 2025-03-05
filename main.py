@@ -46,6 +46,8 @@ if 'filtering_stats' not in st.session_state:
     st.session_state['filtering_stats'] = {}
 if 'pca_selections' not in st.session_state:
     st.session_state['pca_selections'] = {}
+if 'smoothed_data' not in st.session_state:
+    st.session_state['smoothed_data'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -629,57 +631,70 @@ if uploaded_files:
                         st.write(f"- {param}: {value}")
 
                 # Show example of smoothing effect
-                st.write("**Example of Smoothing Effect**")
+                st.write("**Smoothing Effect Examples**")
                 
                 # Get only PG.Quantity columns for visualization
                 quantity_cols = [col for col in final_data.columns if col.endswith("PG.Quantity")]
                 
-                # Select proteins with significant variation for better visualization
+                # Calculate standard deviations to find proteins with notable variation
                 std_devs = processed_data['missing_handled'][quantity_cols].std(axis=1)
                 variable_proteins = std_devs.nlargest(5).index
                 
-                for protein in variable_proteins:
-                    st.write(f"\n**Protein: {protein}**")
-                    
-                    # Create comparison plot
-                    fig, ax = plt.subplots(figsize=(12, 6))
-                    
-                    # Get original and smoothed values for quantity columns only
-                    original_values = pd.to_numeric(processed_data['missing_handled'].loc[protein, quantity_cols], errors='coerce')
-                    smoothed_values = pd.to_numeric(processed_data['smoothed'].loc[protein, quantity_cols], errors='coerce')
-                    
-                    x = range(len(quantity_cols))
-                    ax.plot(x, original_values, 'o-', label='Original', alpha=0.7, color='blue')
-                    ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2, color='red')
-                    
-                    ax.set_xticks(x)
-                    ax.set_xticklabels(quantity_cols, rotation=45, ha='right')
-                    ax.set_ylabel('Intensity')
-                    ax.set_title(f'Smoothing Effect Comparison')
-                    ax.legend()
-                    
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                    plt.close()
-                    
-                    # Show numeric comparison
-                    comparison = pd.DataFrame({
-                        'Original': original_values,
-                        'Smoothed': smoothed_values,
-                        'Difference': smoothed_values - original_values
-                    })
-                    st.write("Numeric comparison:")
-                    st.dataframe(comparison.round(3))
-                    
-                    # Calculate smoothing effect statistics
-                    smoothing_stats = {
-                        'Mean Absolute Change': abs(comparison['Difference']).mean(),
-                        'Max Absolute Change': abs(comparison['Difference']).max(),
-                        'Standard Deviation Reduction': original_values.std() - smoothed_values.std(),
-                    }
-                    st.write("\nSmoothing effect statistics:")
-                    for stat, value in smoothing_stats.items():
-                        st.write(f"- {stat}: {value:.3f}")
+                # Create tabs for each protein example
+                protein_tabs = st.tabs([f"Protein {i+1}" for i in range(len(variable_proteins))])
+                
+                for idx, (protein, tab) in enumerate(zip(variable_proteins, protein_tabs)):
+                    with tab:
+                        # Get original and smoothed values
+                        original_values = pd.to_numeric(processed_data['missing_handled'].loc[protein, quantity_cols], errors='coerce')
+                        smoothed_values = pd.to_numeric(processed_data['smoothed'].loc[protein, quantity_cols], errors='coerce')
+                        
+                        # Create comparison plot
+                        fig, ax = plt.subplots(figsize=(12, 6))
+                        x = range(len(quantity_cols))
+                        
+                        # Plot original data points and line
+                        ax.plot(x, original_values, 'o-', label='Original', alpha=0.7, color='blue')
+                        # Plot smoothed data with thicker line
+                        ax.plot(x, smoothed_values, 'o-', label='Smoothed', linewidth=2, color='red')
+                        
+                        ax.set_xticks(x)
+                        ax.set_xticklabels(quantity_cols, rotation=45, ha='right')
+                        ax.set_ylabel('Intensity')
+                        ax.set_title(f'Smoothing Effect Comparison\nProtein: {protein}')
+                        ax.legend()
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close()
+                        
+                        # Show numeric comparison in an expander
+                        with st.expander("See numeric comparison"):
+                            comparison = pd.DataFrame({
+                                'Original': original_values,
+                                'Smoothed': smoothed_values,
+                                'Difference': smoothed_values - original_values
+                            })
+                            st.dataframe(comparison.round(3))
+                            
+                            # Calculate and show smoothing effect statistics
+                            smoothing_stats = {
+                                'Mean Absolute Change': abs(comparison['Difference']).mean(),
+                                'Max Absolute Change': abs(comparison['Difference']).max(),
+                                'Standard Deviation Reduction': original_values.std() - smoothed_values.std(),
+                            }
+                            st.write("\nSmoothing effect statistics:")
+                            for stat, value in smoothing_stats.items():
+                                st.write(f"- {stat}: {value:.3f}")
+
+                        # Add download buttons for the data
+                        csv = comparison.to_csv(index=True)
+                        st.download_button(
+                            label="Download Comparison Data (CSV)",
+                            data=csv,
+                            file_name=f"smoothing_comparison_{protein}.csv",
+                            mime="text/csv"
+                        )
 
     elif active_tab == "Volcano Plot":
         st.header("Volcano Plot")
