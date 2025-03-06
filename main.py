@@ -1329,7 +1329,7 @@ if uploaded_files:
                                             if col.endswith("PG.Quantity")]
                                 group_data.append(heatmap_data.loc[protein, group_cols])
                             try:
-                                f_stat, p_val = stats.f_oneway(*group_data)
+                                f_stat, p_val = f_oneway(*group_data)
                                 f_stats.append(f_stat)
                                 p_values.append(p_val)
                             except:
@@ -1947,7 +1947,7 @@ if uploaded_files:
                                             group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                             
                                             if len(control_values) >= 2 and len(group_values) >= 2:
-                                                t_stat, p_val = stats.ttest_ind(control_values, group_values)
+                                                t_stat, p_val = ttest_ind(control_values, group_values)
                                                 # Calculate fold change for statistics
                                                 fold_change = float(group_values.mean() / control_values.mean())
                                                 if use_log2:
@@ -1974,7 +1974,7 @@ if uploaded_files:
                                         groups_for_anova.append(group_values)
                                     
                                     if all(len(g) >= 2 for g in groups_for_anova):
-                                        f_stat, p_val = stats.f_oneway(*groups_for_anova)
+                                        f_stat, p_val = f_oneway(*groups_for_anova)
                                         # Add to statistics table
                                         stats_data.append({
                                             'Protein': protein_name,
