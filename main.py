@@ -138,6 +138,20 @@ def extract_gene_name(description):
             return None
     return None
 
+def perform_anova(data_groups):
+    """Perform one-way ANOVA on groups of data."""
+    # Convert groups to format needed for f_oneway
+    groups_for_anova = [group.dropna() for group in data_groups if len(group.dropna()) > 0]
+    
+    if len(groups_for_anova) >= 2:
+        try:
+            f_stat, p_val = f_oneway(*groups_for_anova)
+            return f_stat, p_val
+        except Exception as e:
+            st.error(f"Error performing ANOVA: {str(e)}")
+            return None, None
+    return None, None
+
 def apply_multiple_testing_correction(p_values, method='bonferroni'):
     """Apply multiple testing correction to p-values."""
     import numpy as np
