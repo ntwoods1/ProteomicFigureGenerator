@@ -1,14 +1,11 @@
 [server]
-headless = true
-address = "0.0.0.0"
+headless = false
+address = "localhost"
 port = 5000
-enableCORS = true
-enableXsrfProtection = false
 
 [browser]
-serverAddress = "0.0.0.0"
+serverAddress = "localhost"
 serverPort = 5000
-gatherUsageStats = false
 
 [theme]
 primaryColor="#F63366"
@@ -16,7 +13,3 @@ backgroundColor="#FFFFFF"
 secondaryBackgroundColor="#F0F2F6"
 textColor="#262730"
 font="sans serif"
-
-[logger]
-level = "info"
-messageFormat = "%(asctime)s %(message)s"

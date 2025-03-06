@@ -81,8 +81,6 @@ venv\Scripts\activate
 
 3. Install required packages:
 ```cmd
-python -m pip install --upgrade pip
-pip install pandas>=2.0.0  # Install pandas 2.0 or later for best compatibility
 pip install streamlit pandas numpy scipy scikit-learn statsmodels plotly seaborn matplotlib upsetplot openpyxl
 ```
 
@@ -103,8 +101,6 @@ source venv/bin/activate
 
 3. Install required packages:
 ```bash
-python -m pip install --upgrade pip
-pip install pandas>=2.0.0  # Install pandas 2.0 or later for best compatibility
 pip install streamlit pandas numpy scipy scikit-learn statsmodels plotly seaborn matplotlib upsetplot openpyxl
 ```
 
@@ -123,22 +119,10 @@ streamlit run main.py
 2. **Package installation errors**:
    - Try updating pip: `python -m pip install --upgrade pip`
    - Install packages one by one if bulk installation fails
-   - For pandas warnings, ensure you have pandas 2.0 or later installed
 
 3. **Port already in use**:
    - Close other Streamlit applications
    - Check if any other service is using port 5000
-
-4. **Pandas related warnings**:
-   - If you see downcasting warnings, check your pandas version with `pip show pandas`
-   - Update pandas if needed: `pip install --upgrade pandas`
-   - The application is configured to handle downcasting warnings automatically
-
-### Pandas Configuration
-The application uses pandas 2.0+ features and includes automatic configuration to suppress downcasting warnings. If you still see warnings:
-1. Verify pandas version: `pip show pandas`
-2. Update pandas if below 2.0: `pip install --upgrade pandas`
-3. Ensure you're running the latest version of the application from the repository
 
 
 ## Input Data Format

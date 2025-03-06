@@ -1,7 +1,5 @@
-import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
-
 import streamlit as st
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
@@ -14,8 +12,6 @@ from scipy.stats import ttest_ind, f_oneway
 from scipy.cluster.hierarchy import linkage, dendrogram
 from statsmodels.stats.multitest import multipletests
 import io
-import sys
-import traceback
 from utils.data_processing import (
     analyze_dataset_structure, 
     calculate_cv_table, 
@@ -25,47 +21,28 @@ from utils.data_processing import (
 )
 from itertools import combinations
 
-try:
-    # Debug logging for startup
-    st.write("Starting application initialization...")
-    
-    # Set page configuration with wider layout and proper port handling
-    st.set_page_config(
-        page_title="Proteomics Analysis",
-        page_icon="🧬",
-        layout="wide",
-        menu_items={
-            'Get Help': 'mailto:support@example.com',
-            'Report a bug': "mailto:bugs@example.com",
-        }
-    )
-    st.write("Page configuration set successfully...")
+# Set page configuration
+st.set_page_config(
+    page_title="Proteomics Analysis",
+    page_icon="🧬",
+    layout="wide"
+)
 
-    # Initialize session state for data caching
-    st.write("Initializing session state variables...")
-    if 'processed_data' not in st.session_state:
-        st.session_state['processed_data'] = {}
-    if 'cv_results' not in st.session_state:
-        st.session_state['cv_results'] = {}
-    if 'dataset_structures' not in st.session_state:
-        st.session_state['dataset_structures'] = {}
-    if 'volcano_comparisons' not in st.session_state:
-        st.session_state['volcano_comparisons'] = {}
-    if 'active_tab' not in st.session_state:
-        st.session_state['active_tab'] = 0
-    if 'filtering_stats' not in st.session_state:
-        st.session_state['filtering_stats'] = {}
-    if 'pca_selections' not in st.session_state:
-        st.session_state['pca_selections'] = {}
-    
-    st.write("Session state initialization completed successfully...")
-
-except Exception as e:
-    st.error("⚠️ Critical Error During Application Initialization")
-    st.error(f"Error details: {str(e)}")
-    st.error("Full stack trace:")
-    st.error(traceback.format_exc())
-    sys.exit(1)
+# Initialize session state for data caching
+if 'processed_data' not in st.session_state:
+    st.session_state['processed_data'] = {}
+if 'cv_results' not in st.session_state:
+    st.session_state['cv_results'] = {}
+if 'dataset_structures' not in st.session_state:
+    st.session_state['dataset_structures'] = {}
+if 'volcano_comparisons' not in st.session_state:
+    st.session_state['volcano_comparisons'] = {}
+if 'active_tab' not in st.session_state:
+    st.session_state['active_tab'] = 0
+if 'filtering_stats' not in st.session_state:
+    st.session_state['filtering_stats'] = {}
+if 'pca_selections' not in st.session_state:
+    st.session_state['pca_selections'] = {}
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")
@@ -158,20 +135,6 @@ def extract_gene_name(description):
         except IndexError:
             return None
     return None
-
-def perform_anova(data_groups):
-    """Perform one-way ANOVA on groups of data."""
-    # Convert groups to format needed for f_oneway
-    groups_for_anova = [group.dropna() for group in data_groups if len(group.dropna()) > 0]
-    
-    if len(groups_for_anova) >= 2:
-        try:
-            f_stat, p_val = f_oneway(*groups_for_anova)
-            return f_stat, p_val
-        except Exception as e:
-            st.error(f"Error performing ANOVA: {str(e)}")
-            return None, None
-    return None, None
 
 def apply_multiple_testing_correction(p_values, method='bonferroni'):
     """Apply multiple testing correction to p-values."""
@@ -393,7 +356,7 @@ if uploaded_files:
                         row_data = final_filtered_data.loc[idx, quantity_cols]
                         if not row_data.isnull().all():
                             min_val = row_data.min()
-                            final_filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2).infer_objects()
+                            final_filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
                 else:
                     quantity_data = handle_missing_values(
                         final_filtered_data[quantity_cols],
@@ -1350,7 +1313,7 @@ if uploaded_files:
                                             if col.endswith("PG.Quantity")]
                                 group_data.append(heatmap_data.loc[protein, group_cols])
                             try:
-                                f_stat, p_val = f_oneway(*group_data)
+                                f_stat, p_val = stats.f_oneway(*group_data)
                                 f_stats.append(f_stat)
                                 p_values.append(p_val)
                             except:
@@ -1968,7 +1931,7 @@ if uploaded_files:
                                             group_values = pd.to_numeric(protein[group_cols], errors='coerce').dropna()
                                             
                                             if len(control_values) >= 2 and len(group_values) >= 2:
-                                                t_stat, p_val = ttest_ind(control_values, group_values)
+                                                t_stat, p_val = stats.ttest_ind(control_values, group_values)
                                                 # Calculate fold change for statistics
                                                 fold_change = float(group_values.mean() / control_values.mean())
                                                 if use_log2:
@@ -1995,7 +1958,7 @@ if uploaded_files:
                                         groups_for_anova.append(group_values)
                                     
                                     if all(len(g) >= 2 for g in groups_for_anova):
-                                        f_stat, p_val = f_oneway(*groups_for_anova)
+                                        f_stat, p_val = stats.f_oneway(*groups_for_anova)
                                         # Add to statistics table
                                         stats_data.append({
                                             'Protein': protein_name,
