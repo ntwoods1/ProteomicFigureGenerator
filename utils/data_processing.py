@@ -251,58 +251,49 @@ def normalize_data(df, method="log2", center_scale=True, center_method="zscore",
     return df_norm
 
 def handle_missing_values(df, method="none", min_valid_values=0.5, by_group=False, replicate_groups=None):
-    """Handle missing values using specified method.
-
-    Args:
-        df: Input DataFrame
-        method: Method to handle missing values ('none', 'constant', 'mean', 'median', 'knn', 'half_min')
-        min_valid_values: Minimum fraction of valid values required (0-1)
-        by_group: If True, apply filtering within each replicate group
-        replicate_groups: Dictionary of replicate groups from analyze_dataset_structure
-    """
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    df_clean = df.copy()
-
+    """Handle missing values in the dataset."""
+    import numpy as np
+    
+    if method == "none":
+        return df
+    
     if by_group and replicate_groups:
-        # Apply filtering within each group
-        valid_mask = pd.Series(True, index=df.index)
+        # Handle missing values within each group
+        processed_data = df.copy()
         for group, cols in replicate_groups.items():
-            # Only consider PG.Quantity columns
-            quantity_cols = [col for col in cols if col.endswith("PG.Quantity")]
-            if quantity_cols:
-                group_valid_counts = df[quantity_cols].notna().sum(axis=1)
-                group_mask = group_valid_counts >= (len(quantity_cols) * min_valid_values)
-                valid_mask &= group_mask
-        df_clean = df_clean[valid_mask]
+            group_data = processed_data[cols]
+            if method == "constant":
+                processed_data[cols] = group_data.fillna(0).infer_objects()
+            elif method == "mean":
+                processed_data[cols] = group_data.fillna(group_data.mean()).infer_objects()
+            elif method == "median":
+                processed_data[cols] = group_data.fillna(group_data.median()).infer_objects()
+            elif method == "knn":
+                from sklearn.impute import KNNImputer
+                imputer = KNNImputer(n_neighbors=2)
+                processed_data[cols] = pd.DataFrame(
+                    imputer.fit_transform(group_data),
+                    index=group_data.index,
+                    columns=group_data.columns
+                ).infer_objects()
+        return processed_data
     else:
-        # Global filtering across all PG.Quantity columns
-        quantity_cols = [col for col in numeric_cols if col.endswith("PG.Quantity")]
-        if quantity_cols:
-            valid_counts = df_clean[quantity_cols].notna().sum(axis=1)
-            df_clean = df_clean[valid_counts >= (len(quantity_cols) * min_valid_values)]
-
-    if method == "none" or df_clean.empty:
-        return df_clean
-
-    # Apply imputation only on PG.Quantity columns
-    quantity_cols = [col for col in df_clean.columns if col.endswith("PG.Quantity")]
-    if not quantity_cols:
-        return df_clean
-
-    if method == "knn":
-        imputer = KNNImputer(n_neighbors=3)
-        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
-    elif method == "mean":
-        imputer = SimpleImputer(strategy="mean")
-        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
-    elif method == "median":
-        imputer = SimpleImputer(strategy="median")
-        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
-    elif method == "constant":
-        imputer = SimpleImputer(strategy="constant", fill_value=0)
-        df_clean[quantity_cols] = imputer.fit_transform(df_clean[quantity_cols])
-
-    return df_clean
+        # Handle missing values across all columns
+        if method == "constant":
+            return df.fillna(0).infer_objects()
+        elif method == "mean":
+            return df.fillna(df.mean()).infer_objects()
+        elif method == "median":
+            return df.fillna(df.median()).infer_objects()
+        elif method == "knn":
+            from sklearn.impute import KNNImputer
+            imputer = KNNImputer(n_neighbors=2)
+            return pd.DataFrame(
+                imputer.fit_transform(df),
+                index=df.index,
+                columns=df.columns
+            ).infer_objects()
+        return df
 
 def calculate_quality_metrics(df):
     """Calculate quality control metrics for the dataset."""

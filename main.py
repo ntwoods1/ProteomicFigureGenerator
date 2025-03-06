@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+
+# Suppress downcasting warnings
+pd.set_option('future.no_silent_downcasting', True)
 import matplotlib.pyplot as plt
 import plotly.express as px
 from upsetplot import UpSet, from_contents
@@ -356,7 +359,7 @@ if uploaded_files:
                         row_data = final_filtered_data.loc[idx, quantity_cols]
                         if not row_data.isnull().all():
                             min_val = row_data.min()
-                            final_filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2)
+                            final_filtered_data.loc[idx, quantity_cols] = row_data.fillna(min_val / 2).infer_objects()
                 else:
                     quantity_data = handle_missing_values(
                         final_filtered_data[quantity_cols],
