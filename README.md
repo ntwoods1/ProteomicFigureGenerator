@@ -63,6 +63,68 @@ pip install streamlit pandas numpy scipy scikit-learn statsmodels plotly seaborn
 streamlit run main.py
 ```
 
+## Installation Instructions
+
+### Prerequisites
+1. Install Python 3.11 or later from [python.org](https://www.python.org/downloads/)
+2. During Python installation on Windows:
+   - ✅ Check "Add Python to PATH"
+   - ✅ Check "pip package installer"
+
+### Windows Setup
+1. Open Command Prompt as Administrator
+2. Create and activate a virtual environment:
+```cmd
+python -m venv venv
+venv\Scripts\activate
+```
+
+3. Install required packages:
+```cmd
+pip install streamlit pandas numpy scipy scikit-learn statsmodels plotly seaborn matplotlib upsetplot openpyxl
+```
+
+4. Run the application:
+```cmd
+streamlit run main.py
+```
+
+The application will open automatically in your default web browser.
+
+### macOS/Linux Setup
+1. Open Terminal
+2. Create and activate a virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Install required packages:
+```bash
+pip install streamlit pandas numpy scipy scikit-learn statsmodels plotly seaborn matplotlib upsetplot openpyxl
+```
+
+4. Run the application:
+```bash
+streamlit run main.py
+```
+
+## Troubleshooting
+
+### Common Issues
+1. **"Python not found" error**:
+   - Ensure Python is added to PATH during installation
+   - Restart your command prompt/terminal after installation
+
+2. **Package installation errors**:
+   - Try updating pip: `python -m pip install --upgrade pip`
+   - Install packages one by one if bulk installation fails
+
+3. **Port already in use**:
+   - Close other Streamlit applications
+   - Check if any other service is using port 5000
+
+
 ## Input Data Format
 
 The application expects Excel files (.xlsx) with the following columns:

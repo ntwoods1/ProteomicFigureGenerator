@@ -1,19 +1,25 @@
-# Example Data
+# Example Data Directory
 
-This directory contains example proteomics datasets that demonstrate the expected input format for the application.
+Place your Excel (.xlsx) files in this directory. Files should follow this format:
 
-## File Format Requirements
-
-The application expects Excel files (.xlsx) with the following columns:
-
-### Required Columns
-- `Description`: Protein descriptions (used for gene name extraction)
-- `[X]_CellLine_Treatment_ReplicateNumber.PG.Quantity`: Quantitative measurements for each sample
-- `[X]_CellLine_Treatment_ReplicateNumber.PG.NrOfStrippedSequencesIdentified`: Number of peptides identified
-  or
+## Required Columns
+- `Description`: Protein descriptions
+- `[X]_CellLine_Treatment_ReplicateNumber.PG.Quantity`: Quantitative measurements
+- `[X]_CellLine_Treatment_ReplicateNumber.PG.NrOfStrippedSequencesIdentified`: Peptide counts
+or
 - `[X]_CellLine_Treatment_ReplicateNumber.PG.NrOfPrecursorsMeasured`: Number of precursors measured
 
-### Column Naming Convention
+
+## Example Format
+```
+Description                         [1]_HeLa_Control_1.PG.Quantity  [1]_HeLa_Control_1.PG.NrOfStrippedSequencesIdentified
+Protein ABC >GN=ABC                1234.56                         5
+Protein XYZ >GN=XYZ                789.01                          3
+```
+
+A sample dataset will be provided in future updates.
+
+## Column Naming Convention
 Sample columns should follow this format:
 ```
 [Number]_CellLine_Treatment_ReplicateNumber.PG.Quantity
@@ -22,7 +28,6 @@ Sample columns should follow this format:
 Example: `[1]_HeLa_Control_1.PG.Quantity`
 
 ## Example Files
-
 1. `example_dataset.xlsx` - A minimal example dataset containing:
    - 2 cell lines
    - 2 conditions
