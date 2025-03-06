@@ -8,7 +8,7 @@ import tempfile
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
 import seaborn as sns
-from scipy.stats import ttest_ind, stats
+from scipy.stats import ttest_ind, f_oneway
 from scipy.cluster.hierarchy import linkage, dendrogram
 from statsmodels.stats.multitest import multipletests
 import io
@@ -161,7 +161,6 @@ def apply_multiple_testing_correction(p_values, method='bonferroni'):
 
 def calculate_significance_matrix(data, groups, structure, alpha=0.05):
     """Calculate statistical significance between groups for each protein."""
-    from scipy import stats
     import numpy as np
     
     # Get all pairs of groups
@@ -186,7 +185,7 @@ def calculate_significance_matrix(data, groups, structure, alpha=0.05):
             
             # Perform t-test if we have enough values
             if len(g1_values) >= 2 and len(g2_values) >= 2:
-                _, p_val = stats.ttest_ind(g1_values, g2_values)
+                _, p_val = ttest_ind(g1_values, g2_values)
                 significance[protein][(g1, g2)] = p_val < alpha
             else:
                 significance[protein][(g1, g2)] = False
