@@ -14,6 +14,8 @@ from scipy.stats import ttest_ind, f_oneway
 from scipy.cluster.hierarchy import linkage, dendrogram
 from statsmodels.stats.multitest import multipletests
 import io
+import sys
+import traceback
 from utils.data_processing import (
     analyze_dataset_structure, 
     calculate_cv_table, 
@@ -23,28 +25,47 @@ from utils.data_processing import (
 )
 from itertools import combinations
 
-# Set page configuration
-st.set_page_config(
-    page_title="Proteomics Analysis",
-    page_icon="🧬",
-    layout="wide"
-)
+try:
+    # Debug logging for startup
+    st.write("Starting application initialization...")
+    
+    # Set page configuration with wider layout and proper port handling
+    st.set_page_config(
+        page_title="Proteomics Analysis",
+        page_icon="🧬",
+        layout="wide",
+        menu_items={
+            'Get Help': 'mailto:support@example.com',
+            'Report a bug': "mailto:bugs@example.com",
+        }
+    )
+    st.write("Page configuration set successfully...")
 
-# Initialize session state for data caching
-if 'processed_data' not in st.session_state:
-    st.session_state['processed_data'] = {}
-if 'cv_results' not in st.session_state:
-    st.session_state['cv_results'] = {}
-if 'dataset_structures' not in st.session_state:
-    st.session_state['dataset_structures'] = {}
-if 'volcano_comparisons' not in st.session_state:
-    st.session_state['volcano_comparisons'] = {}
-if 'active_tab' not in st.session_state:
-    st.session_state['active_tab'] = 0
-if 'filtering_stats' not in st.session_state:
-    st.session_state['filtering_stats'] = {}
-if 'pca_selections' not in st.session_state:
-    st.session_state['pca_selections'] = {}
+    # Initialize session state for data caching
+    st.write("Initializing session state variables...")
+    if 'processed_data' not in st.session_state:
+        st.session_state['processed_data'] = {}
+    if 'cv_results' not in st.session_state:
+        st.session_state['cv_results'] = {}
+    if 'dataset_structures' not in st.session_state:
+        st.session_state['dataset_structures'] = {}
+    if 'volcano_comparisons' not in st.session_state:
+        st.session_state['volcano_comparisons'] = {}
+    if 'active_tab' not in st.session_state:
+        st.session_state['active_tab'] = 0
+    if 'filtering_stats' not in st.session_state:
+        st.session_state['filtering_stats'] = {}
+    if 'pca_selections' not in st.session_state:
+        st.session_state['pca_selections'] = {}
+    
+    st.write("Session state initialization completed successfully...")
+
+except Exception as e:
+    st.error("⚠️ Critical Error During Application Initialization")
+    st.error(f"Error details: {str(e)}")
+    st.error("Full stack trace:")
+    st.error(traceback.format_exc())
+    sys.exit(1)
 
 # Title and File Upload Section
 st.title("Proteomic Data Analysis")

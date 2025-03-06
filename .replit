@@ -6,7 +6,7 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["sh", "-c", "streamlit run main.py"]
+run = ["sh", "-c", "streamlit run main.py --server.port 5000 --server.address 0.0.0.0 --logger.level info"]
 
 [workflows]
 runButton = "Project"
@@ -32,13 +32,12 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "streamlit run main.py"
-waitForPort = 8080
+args = "streamlit run main.py --server.port 5000 --server.address 0.0.0.0 --logger.level info"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 5000
-exposeLocalhost = true
 
 [[ports]]
 localPort = 8080
