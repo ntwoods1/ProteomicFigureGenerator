@@ -45,15 +45,6 @@ streamlit_app.log
 .DS_Store
 Thumbs.db
 
-# Replit specific
-.replit
-.breakpoints
-replit.nix
-poetry.lock
-.upm/
-.config/
-.pythonlibs/
-
 # Data and outputs
 *.xlsx
 *.csv

@@ -33,7 +33,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "streamlit run main.py"
-waitForPort = 8080
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000

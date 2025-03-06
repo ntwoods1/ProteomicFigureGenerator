@@ -39,30 +39,6 @@ A cutting-edge web application for proteomics data analysis, leveraging advanced
   - Regular or log2 fold change display
   - Statistical analysis with downloadable results
 
-## Quick Start
-
-### Running on Replit
-1. Fork this repository to your Replit account
-2. Click the Run button
-3. The Streamlit interface will automatically open in a new tab
-
-### Local Installation
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/proteomics-analysis.git
-cd proteomics-analysis
-```
-
-2. Install required packages:
-```bash
-pip install streamlit pandas numpy scipy scikit-learn statsmodels plotly seaborn matplotlib upsetplot
-```
-
-3. Run the application:
-```bash
-streamlit run main.py
-```
-
 ## Installation Instructions
 
 ### Prerequisites
@@ -124,7 +100,6 @@ streamlit run main.py
    - Close other Streamlit applications
    - Check if any other service is using port 5000
 
-
 ## Input Data Format
 
 The application expects Excel files (.xlsx) with the following columns:
@@ -158,16 +133,6 @@ Example: `[1]_HeLa_Control_1.PG.Quantity`
    - Create custom heatmaps for selected proteins
    - Generate statistical bar charts with error bars
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Citation
-
-If you use this tool in your research, please cite:
-```
-To be added

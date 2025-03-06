@@ -17,8 +17,6 @@ Protein ABC >GN=ABC                1234.56                         5
 Protein XYZ >GN=XYZ                789.01                          3
 ```
 
-A sample dataset will be provided in future updates.
-
 ## Column Naming Convention
 Sample columns should follow this format:
 ```
@@ -38,8 +36,7 @@ Note: Due to size limitations, example datasets contain a reduced number of prot
 
 ## Using Example Data
 
-1. Download the example dataset
-2. Upload it to the application
-3. Follow the tutorial in the main README to analyze the data
+1. Place your Excel files in this directory
+2. Follow the tutorial in the main README to analyze the data
 
 This will help you understand how the application processes and visualizes proteomics data.
