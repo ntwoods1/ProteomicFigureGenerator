@@ -1,9 +1,8 @@
-import streamlit as st
 import pandas as pd
-import numpy as np
-
-# Suppress downcasting warnings
 pd.set_option('future.no_silent_downcasting', True)
+
+import streamlit as st
+import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
 from upsetplot import UpSet, from_contents
